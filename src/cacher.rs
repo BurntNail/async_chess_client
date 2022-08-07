@@ -14,7 +14,7 @@ pub struct Cacher {
 impl Cacher {
     pub fn new() -> Result<Self, find_folder::Error> {
         let path = ParentsThenKids(3, 3).for_folder("assets")?;
-        Ok(Cacher {
+        Ok(Self {
             path,
             assets: HashMap::new(),
         })

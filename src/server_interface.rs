@@ -15,6 +15,7 @@ pub struct JSONPiece {
 impl JSONPieceList {
     ///# Panics:
     ///Has the ability to panic, but if the server follows specs, should be fine
+    #[allow(clippy::wrong_self_convention)]
     pub fn to_game_list(self) -> Vec<Option<ChessPiece>> {
         let mut v = vec![None; 8 * 8];
         for p in self.0 {
@@ -43,7 +44,7 @@ pub struct JSONMove {
 }
 
 impl JSONMove {
-    pub fn new(id: u32, x: u32, y: u32, nx: u32, ny: u32) -> Self {
+    pub const fn new(id: u32, x: u32, y: u32, nx: u32, ny: u32) -> Self {
         Self { id, x, y, nx, ny }
     }
 }

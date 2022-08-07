@@ -49,7 +49,7 @@ impl ChessGame {
                             if let Some(piece) = lock[idx] {
                                 match self.c.get(&piece.to_file_name()) {
                                     None => {
-                                        error!("Cacher doesn't contain: {}", piece.to_file_name())
+                                        error!("Cacher doesn't contain: {}", piece.to_file_name());
                                     }
                                     Some(tex) => {
                                         let x = col as f64 * (TILE_S + 2.0);
@@ -106,7 +106,7 @@ impl ChessGame {
                     .await;
                 match rsp {
                     Ok(response) => {
-                        info!("Update from server on moving: {:?}", response.text().await)
+                        info!("Update from server on moving: {:?}", response.text().await);
                     }
                     Err(e) => {
                         error!("Error in input response {e}");
@@ -120,32 +120,32 @@ impl ChessGame {
 
     ///Should be called ASAP after instantiating game, and after input
     pub async fn update_list(&mut self) -> Result<(), reqwest::Error> {
-        match self.cached_pieces.write() {
-            Ok(mut lock) => {
-                let result = self
-                    .client
-                    .get(format!("http://109.74.205.63:12345/games/{}", self.id))
-                    .send()
-                    .await?
-                //     .text()
-                //     .await?;
-                // info!("Got {result} from server");
-                    .json::<JSONPieceList>()
-                    .await;
-                match result {
-                    Ok(jpl) => *lock = jpl.to_game_list(),
-                    Err(e) => error!("Unable to parse result to a valid JSONPieceList: {e}"),
+        let result = self
+            .client
+            .get(format!("http://109.74.205.63:12345/games/{}", self.id))
+            .send()
+            .await?
+            //     .text()
+            //     .await?;
+            // info!("Got {result} from server");
+            .json::<JSONPieceList>()
+            .await;
+        match result {
+            Ok(jpl) => match self.cached_pieces.write() {
+                Ok(mut lock) => {
+                    *lock = jpl.to_game_list();
                 }
-            }
-            Err(e) => {
-                error!("Unable to populate due to {e}")
-            }
+                Err(e) => {
+                    error!("Unable to populate due to {e}");
+                }
+            },
+            Err(e) => error!("Unable to parse result to a valid JSONPieceList: {e}"),
         }
 
         Ok(())
     }
 
-    pub async fn restart_board (&mut self) -> Result<(), reqwest::Error> {
+    pub async fn restart_board(&mut self) -> Result<(), reqwest::Error> {
         let rsp = self
             .client
             .post("http://109.74.205.63:12345/newgame")

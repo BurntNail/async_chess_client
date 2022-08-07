@@ -51,7 +51,7 @@ impl ChessPiece {
         v
     }
 
-    pub fn to_file_name(&self) -> String {
+    pub fn to_file_name(self) -> String {
         format!(
             "{}_{}.png",
             if self.is_white { "white" } else { "black" },

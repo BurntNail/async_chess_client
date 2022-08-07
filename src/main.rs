@@ -1,3 +1,16 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::module_name_repetitions,
+    clippy::multiple_crate_versions,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::use_self,
+    clippy::nonminimal_bool
+)]
+
 mod cacher;
 mod chess;
 mod game;
@@ -7,7 +20,10 @@ mod server_interface;
 extern crate tracing;
 
 use crate::game::ChessGame;
-use piston_window::{Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent, Window, WindowSettings};
+use piston_window::{
+    Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent, Window,
+    WindowSettings,
+};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -58,7 +74,7 @@ async fn main() {
                         game.update_list().await.unwrap_or_else(|err| {
                             error!("Unable to re-update list: {err}");
                         });
-                    },
+                    }
                     Key::C => {
                         //Restart Board
                         game.restart_board().await.unwrap_or_else(|err| {
@@ -69,23 +85,21 @@ async fn main() {
                         });
                     }
                     _ => {}
-                }
+                },
                 Button::Mouse(mb) => {
                     if mb == MouseButton::Right {
                         game.clear_input();
-                    } else {
-                        if !(mouse_pos.0 < 40.0
-                            || mouse_pos.0 > 216.0
-                            || mouse_pos.0 < 40.0
-                            || mouse_pos.0 > 216.0)
-                        {
-                            info!("UI stuff");
+                    } else if !(mouse_pos.0 < 40.0
+                        || mouse_pos.0 > 216.0
+                        || mouse_pos.0 < 40.0
+                        || mouse_pos.0 > 216.0)
+                    {
+                        info!("UI stuff");
 
-                            let inp = (mouse_pos.0 - 40.0, mouse_pos.1 - 40.0);
-                            game.input(inp, size).await;
-                        } else {
-                            info!("UI OOB");
-                        }
+                        let inp = (mouse_pos.0 - 40.0, mouse_pos.1 - 40.0);
+                        game.input(inp, size).await;
+                    } else {
+                        info!("UI OOB");
                     }
 
                     game.update_list().await.unwrap_or_else(|err| {

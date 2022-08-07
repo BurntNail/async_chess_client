@@ -125,5 +125,51 @@ jobs:
       
     - uses: actions/upload-artifact@v3
       with:
-        name: EGUI_Windows
-        path: target/release/async_chess_client.exe
+        name: Piston_Windows
+        path: |
+          target/release/async_chess_client.exe
+          assets/
+
+  build-linux:
+    runs-on: ubuntu-latest
+    needs: [lints]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install latest toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          target: x86_64-pc-windows-msvc
+          toolchain: stable
+          override: true
+
+      - name: Cargo Cache
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+            ${{ runner.os }}-cargo
+      - name: Cargo Target Cache
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-${{ hashFiles('Cargo.toml') }}
+            ${{ runner.os }}-cargo-target
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: Piston_Windows
+          path: |
+           target/release/async_chess_client
+           assets/

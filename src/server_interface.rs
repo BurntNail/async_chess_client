@@ -39,13 +39,11 @@ pub struct JSONMove {
     pub x: u32,
     pub y: u32,
     pub nx: u32,
-    pub ny: u32
+    pub ny: u32,
 }
 
 impl JSONMove {
-    pub fn new (id: u32, x: u32, y: u32, nx: u32, ny: u32) -> Self {
-        Self {
-            id,x,y,nx,ny
-        }
+    pub fn new(id: u32, x: u32, y: u32, nx: u32, ny: u32) -> Self {
+        Self { id, x, y, nx, ny }
     }
 }

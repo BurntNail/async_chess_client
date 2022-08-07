@@ -47,9 +47,10 @@ impl Cacher {
 
     pub fn populate(&mut self, win: &mut PistonWindow) {
         for variant in ChessPiece::all_variants() {
-            self.insert(&variant.to_file_name(), win).unwrap_or_else(|err| {
-                error!("Unable to populate {variant:?} due to {err}");
-            });
+            self.insert(&variant.to_file_name(), win)
+                .unwrap_or_else(|err| {
+                    error!("Unable to populate {variant:?} due to {err}");
+                });
         }
         self.insert("board_alt.png", win).unwrap_or_else(|err| {
             error!("Unable to populate board alt due to {err}");

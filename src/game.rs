@@ -1,12 +1,11 @@
 use crate::{
     cacher::{Cacher, BOARD_S, TILE_S},
     chess::ChessPiece,
-    server_interface::JSONPieceList,
+    server_interface::{JSONMove, JSONPieceList},
 };
 use piston_window::{clear, image, Context, G2d, GfxDevice, PistonWindow, Size, Transformed};
+use reqwest::Client;
 use std::sync::RwLock;
-use reqwest::{Client};
-use crate::server_interface::JSONMove;
 
 pub struct ChessGame {
     id: u32,
@@ -14,7 +13,7 @@ pub struct ChessGame {
     // requests: HashMap<RequestType, Promise<reqwest::Result<String>>>,
     cached_pieces: RwLock<Vec<Option<ChessPiece>>>,
     last_pressed: Option<(u32, u32)>,
-    client: Client
+    client: Client,
 }
 impl ChessGame {
     pub fn new(win: &mut PistonWindow) -> Result<Self, find_folder::Error> {
@@ -49,7 +48,9 @@ impl ChessGame {
                             let idx = row * 8 + col;
                             if let Some(piece) = lock[idx] {
                                 match self.c.get(&piece.to_file_name()) {
-                                    None => error!("Cacher doesn't contain: {}", piece.to_file_name()),
+                                    None => {
+                                        error!("Cacher doesn't contain: {}", piece.to_file_name())
+                                    }
                                     Some(tex) => {
                                         let x = col as f64 * (TILE_S + 2.0);
                                         let y = row as f64 * (TILE_S + 2.0);
@@ -60,7 +61,7 @@ impl ChessGame {
                             }
                         }
                     }
-                },
+                }
                 Err(e) => {
                     error!("Unable to read vec: {e}");
                 }
@@ -91,14 +92,21 @@ impl ChessGame {
 
                 info!("Dealing with a move from {lp:?} to {current_press:?}");
 
-                let rsp = self.client
+                let rsp = self
+                    .client
                     .post("http://109.74.205.63:12345/movepiece")
-                    .json(&JSONMove::new(self.id, lp.0, lp.1, current_press.0, current_press.1))
+                    .json(&JSONMove::new(
+                        self.id,
+                        lp.0,
+                        lp.1,
+                        current_press.0,
+                        current_press.1,
+                    ))
                     .send()
                     .await;
                 match rsp {
                     Ok(response) => {
-                        info!("Update from server: {:?}", response.text().await)
+                        info!("Update from server on moving: {:?}", response.text().await)
                     }
                     Err(e) => {
                         error!("Error in input response {e}");
@@ -114,18 +122,37 @@ impl ChessGame {
     pub async fn update_list(&mut self) -> Result<(), reqwest::Error> {
         match self.cached_pieces.write() {
             Ok(mut lock) => {
-                *lock = self.client.get(format!("http://109.74.205.63:12345/games/{}", self.id))
+                let result = self
+                    .client
+                    .get(format!("http://109.74.205.63:12345/games/{}", self.id))
                     .send()
                     .await?
+                //     .text()
+                //     .await?;
+                // info!("Got {result} from server");
                     .json::<JSONPieceList>()
-                    .await?
-                    .to_game_list();
+                    .await;
+                match result {
+                    Ok(jpl) => *lock = jpl.to_game_list(),
+                    Err(e) => error!("Unable to parse result to a valid JSONPieceList: {e}"),
+                }
             }
             Err(e) => {
                 error!("Unable to populate due to {e}")
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn restart_board (&mut self) -> Result<(), reqwest::Error> {
+        let rsp = self
+            .client
+            .post("http://109.74.205.63:12345/newgame")
+            .body(self.id.to_string())
+            .send()
+            .await?;
+        info!("Update from server on restarting: {:?}", rsp.text().await);
         Ok(())
     }
 

@@ -1,16 +1,13 @@
 mod cacher;
 mod chess;
-mod server_interface;
 mod game;
+mod server_interface;
 
 #[macro_use]
 extern crate tracing;
 
 use crate::game::ChessGame;
-use piston_window::{
-    Button, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent, Window,
-    WindowSettings,
-};
+use piston_window::{Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent, Window, WindowSettings};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -53,24 +50,50 @@ async fn main() {
             });
         }
 
-        //TODO: more input, eg. press C to delete, and re-create the game
-        if let Some(Button::Mouse(mb)) = e.press_args() {
-            if mb == MouseButton::Right {
-                game.clear_input();
-            } else {
-                if !(mouse_pos.0 < 40.0 || mouse_pos.0 > 216.0 || mouse_pos.0 < 40.0 || mouse_pos.0 > 216.0) {
-                    info!("UI stuff");
-
-                    let inp = (mouse_pos.0 - 40.0, mouse_pos.1 - 40.0);
-                    game.input(inp, size).await;
-                } else {
-                    info!("UI OOB");
+        if let Some(pa) = e.press_args() {
+            match pa {
+                Button::Keyboard(kb) => match kb {
+                    Key::R => {
+                        //Reload
+                        game.update_list().await.unwrap_or_else(|err| {
+                            error!("Unable to re-update list: {err}");
+                        });
+                    },
+                    Key::C => {
+                        //Restart Board
+                        game.restart_board().await.unwrap_or_else(|err| {
+                            error!("Unable to restart board: {err}");
+                        });
+                        game.update_list().await.unwrap_or_else(|err| {
+                            error!("Unable to re-update list: {err}");
+                        });
+                    }
+                    _ => {}
                 }
-            }
+                Button::Mouse(mb) => {
+                    if mb == MouseButton::Right {
+                        game.clear_input();
+                    } else {
+                        if !(mouse_pos.0 < 40.0
+                            || mouse_pos.0 > 216.0
+                            || mouse_pos.0 < 40.0
+                            || mouse_pos.0 > 216.0)
+                        {
+                            info!("UI stuff");
 
-            game.update_list().await.unwrap_or_else(|err| {
-                error!("Unable to re-update list: {err}");
-            });
+                            let inp = (mouse_pos.0 - 40.0, mouse_pos.1 - 40.0);
+                            game.input(inp, size).await;
+                        } else {
+                            info!("UI OOB");
+                        }
+                    }
+
+                    game.update_list().await.unwrap_or_else(|err| {
+                        error!("Unable to re-update list: {err}");
+                    });
+                }
+                _ => {}
+            }
         }
 
         e.mouse_cursor(|p| mouse_pos = (p[0], p[1]));

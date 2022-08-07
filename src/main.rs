@@ -1,6 +1,6 @@
 mod cacher;
 mod chess;
-mod from_server;
+mod server_interface;
 mod game;
 
 #[macro_use]
@@ -38,30 +38,41 @@ async fn main() {
         error!("Error making game: {e}");
         std::process::exit(1);
     });
-    game.populate().await.unwrap_or_else(|err| {
+    game.update_list().await.unwrap_or_else(|err| {
         error!("Unable to populate game: {err}");
         std::process::exit(1);
     });
 
-    // let mut mouse_pos = (0.0, 0.0);
-    // while let Some(e) = win.next() {
-    //     let size = win.size();
-    //
-    //     if let Some(_r) = e.render_args() {
-    //         win.draw_2d(&e, |c, g, device| {
-    //             game.render(size, c, g, device);
-    //         });
-    //     }
-    //
-    //     if let Some(Button::Mouse(mb)) = e.press_args() {
-    //         if mb == MouseButton::Right {
-    //             game.clear_input();
-    //         } else {
-    //             let inp = (mouse_pos.0, mouse_pos.1);
-    //             game.input(inp, size).await;
-    //         }
-    //     }
-    //
-    //     e.mouse_cursor(|p| mouse_pos = (p[0], p[1]));
-    // }
+    let mut mouse_pos = (0.0, 0.0);
+    while let Some(e) = win.next() {
+        let size = win.size();
+
+        if let Some(_r) = e.render_args() {
+            win.draw_2d(&e, |c, g, device| {
+                game.render(size, c, g, device);
+            });
+        }
+
+        //TODO: more input, eg. press C to delete, and re-create the game
+        if let Some(Button::Mouse(mb)) = e.press_args() {
+            if mb == MouseButton::Right {
+                game.clear_input();
+            } else {
+                if !(mouse_pos.0 < 40.0 || mouse_pos.0 > 216.0 || mouse_pos.0 < 40.0 || mouse_pos.0 > 216.0) {
+                    info!("UI stuff");
+
+                    let inp = (mouse_pos.0 - 40.0, mouse_pos.1 - 40.0);
+                    game.input(inp, size).await;
+                } else {
+                    info!("UI OOB");
+                }
+            }
+
+            game.update_list().await.unwrap_or_else(|err| {
+                error!("Unable to re-update list: {err}");
+            });
+        }
+
+        e.mouse_cursor(|p| mouse_pos = (p[0], p[1]));
+    }
 }

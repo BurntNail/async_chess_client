@@ -31,7 +31,7 @@ impl Cacher {
 
     fn insert(&mut self, p: &str, win: &mut PistonWindow) -> Result<(), String> {
         let path = self.path.join(p);
-        let ts = TextureSettings::new().filter(Filter::Linear);
+        let ts = TextureSettings::new().filter(Filter::Nearest);
 
         match Texture::from_path(&mut win.create_texture_context(), path, Flip::None, &ts) {
             Ok(tex) => {
@@ -52,8 +52,11 @@ impl Cacher {
                     error!("Unable to populate {variant:?} due to {err}");
                 });
         }
-        self.insert("board_alt.png", win).unwrap_or_else(|err| {
-            error!("Unable to populate board alt due to {err}");
-        });
+
+        for extra in &["board_alt.png", "highlight.png", "selected.png"] {
+            self.insert(extra, win).unwrap_or_else(|err| {
+                error!("Unable to populate {extra} alt due to {err}");
+            });
+        }
     }
 }

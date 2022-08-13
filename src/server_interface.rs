@@ -1,13 +1,17 @@
-use crate::chess::{ChessPiece, ChessPieceKind};
+use crate::{
+    chess::{ChessPiece, ChessPieceKind},
+    eyre,
+};
+use color_eyre::Report;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug)]
-pub struct JSONPieceList(Vec<JSONPiece>);
+#[derive(Deserialize, Debug, Default)]
+pub struct JSONPieceList(pub Vec<JSONPiece>);
 
 #[derive(Deserialize, Debug)]
 pub struct JSONPiece {
-    pub x: i32,
-    pub y: i32,
+    pub x: u32,
+    pub y: u32,
     pub kind: String,
     pub is_white: bool,
 }
@@ -16,21 +20,67 @@ impl JSONPieceList {
     ///# Panics:
     ///Has the ability to panic, but if the server follows specs, should be fine
     #[allow(clippy::wrong_self_convention)]
-    pub fn to_game_list(self) -> Vec<Option<ChessPiece>> {
+    pub fn to_game_list(self) -> Result<Vec<Option<ChessPiece>>, Report> {
         let mut v = vec![None; 8 * 8];
         for p in self.0 {
-            if p.x < 0 || p.y < 0 {
-                continue;
+            let idx = (8 * p.y + p.x) as usize;
+            let current = v.get_mut(idx).expect("Jack has messed up his maths");
+
+            if current.is_some() {
+                return Err(eyre!("Collision at ({}, {})", p.x, p.y));
             }
 
-            //PANIC: have checked above for > 0
-            v[8 * p.y as usize + p.x as usize] = Some(ChessPiece {
-                kind: ChessPieceKind::try_from(p.kind).expect("Server messed up"),
+            *current = Some(ChessPiece {
+                kind: ChessPieceKind::try_from(p.kind)?,
                 is_white: p.is_white,
             });
         }
 
-        v
+        Ok(v)
+    }
+
+    pub fn no_connection_list() -> Vec<Option<ChessPiece>> {
+        let p = |x, y| JSONPiece {
+            x,
+            y,
+            is_white: (x + y) % 2 == 0,
+            kind: "rook".into(),
+        };
+        let list = vec![
+            p(0, 0),
+            p(0, 2),
+            p(0, 5),
+            p(0, 7),
+            p(1, 0),
+            p(1, 2),
+            p(1, 5),
+            p(1, 6),
+            p(1, 7),
+            p(2, 0),
+            p(2, 1),
+            p(2, 2),
+            p(2, 5),
+            p(2, 7),
+            p(5, 0),
+            p(5, 1),
+            p(5, 2),
+            p(5, 5),
+            p(5, 7),
+            p(6, 0),
+            p(6, 2),
+            p(6, 5),
+            p(6, 6),
+            p(6, 7),
+            p(7, 0),
+            p(7, 1),
+            p(7, 2),
+            p(7, 5),
+            p(7, 7),
+        ];
+
+        JSONPieceList(list)
+            .to_game_list()
+            .expect("Error in list boi")
     }
 }
 

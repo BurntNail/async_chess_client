@@ -1,14 +1,14 @@
-use crate::chess::ChessPiece;
+use crate::{chess::ChessPiece, eyre};
 use color_eyre::Report;
 use find_folder::Search::ParentsThenKids;
 use piston_window::{Filter, Flip, G2dTexture, PistonWindow, Texture, TextureSettings};
 use std::{collections::HashMap, path::PathBuf};
-use crate::eyre;
 
 pub const TILE_S: f64 = 20.0;
 pub const BOARD_S: f64 = 256.0;
 
-#[derive(Debug)]pub struct Cacher {
+#[derive(Debug)]
+pub struct Cacher {
     path: PathBuf,
     assets: HashMap<String, G2dTexture>,
 }
@@ -40,20 +40,20 @@ impl Cacher {
                 self.assets.insert(p.to_string(), tex);
                 Ok(())
             }
-            Err(e) => {
-                Err(eyre!("Unable to find texture: {e}"))
-            }
+            Err(e) => Err(eyre!("Unable to find texture: {e}")),
         }
     }
 
     #[tracing::instrument(skip(self, win), fields(s_len=self.assets.len(), path=?self.path))]
-    pub fn populate(&mut self, win: &mut PistonWindow) -> Result<(), Report>{
+    pub fn populate(&mut self, win: &mut PistonWindow) -> Result<(), Report> {
         for variant in ChessPiece::all_variants() {
-            self.insert(&variant.to_file_name(), win).map_err(|e| eyre!("Unable to insert {variant:?}: {e}"))?;
+            self.insert(&variant.to_file_name(), win)
+                .map_err(|e| eyre!("Unable to insert {variant:?}: {e}"))?;
         }
 
         for extra in &["board_alt.png", "highlight.png", "selected.png"] {
-            self.insert(extra, win).map_err(|e| eyre!("Unable to insert {extra:?}: {e}"))?;
+            self.insert(extra, win)
+                .map_err(|e| eyre!("Unable to insert {extra:?}: {e}"))?;
         }
 
         Ok(())

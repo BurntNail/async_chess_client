@@ -1,4 +1,7 @@
-use std::fmt::{Debug, Formatter};
+use std::{
+    error::Error as SError,
+    fmt::{Debug, Formatter},
+};
 use strum::{Display, EnumIter, IntoEnumIterator};
 
 #[derive(EnumIter, Display, Copy, Clone)]
@@ -11,8 +14,15 @@ pub enum ChessPieceKind {
     Rook,
 }
 
+#[derive(Debug, Display)]
+pub enum ChessPieceKindParseError {
+    FailedMatch(String),
+}
+
+impl SError for ChessPieceKindParseError {}
+
 impl TryFrom<String> for ChessPieceKind {
-    type Error = ();
+    type Error = ChessPieceKindParseError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let value = value.trim().to_lowercase();
@@ -23,7 +33,7 @@ impl TryFrom<String> for ChessPieceKind {
             "queen" => Ok(Self::Queen),
             "king" => Ok(Self::King),
             "rook" => Ok(Self::Rook),
-            _ => Err(()),
+            _ => Err(ChessPieceKindParseError::FailedMatch(value)),
         }
     }
 }

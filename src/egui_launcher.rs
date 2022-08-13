@@ -4,7 +4,7 @@ use eframe::App;
 use serde_json::to_string;
 use std::{
     fs::{create_dir_all, OpenOptions},
-    io::{Write},
+    io::Write,
 };
 
 #[tracing::instrument]
@@ -61,49 +61,53 @@ impl App for AsyncChessLauncher {
     }
 
     #[tracing::instrument]
-    fn on_exit(&mut self, _gl: &eframe::glow::Context) {
+    fn on_exit(&mut self, gl: &eframe::glow::Context) {
         let pc = PistonConfig {
             //PANICS - we parse ^
             id: self.id.parse().unwrap(),
             res: self.res.parse().unwrap(),
         };
+        write_conf_to_file(pc);
+    }
+}
 
-        std::thread::spawn(move || {
-            info!(?pc, "Writing config to disk");
+#[tracing::instrument]
+fn write_conf_to_file(pc: PistonConfig) {
+    std::thread::spawn(move || {
+        info!(?pc, "Writing config to disk");
 
-            match to_string(&pc) {
-                Ok(st) => match ProjectDirs::from("com", "jackmaguire", "async_chess") {
-                    Some(cd) => {
-                        let path = cd.config_dir();
+        match to_string(&pc) {
+            Ok(st) => match ProjectDirs::from("com", "jackmaguire", "async_chess") {
+                Some(cd) => {
+                    let path = cd.config_dir();
 
-                        match create_dir_all(path) {
-                            Ok(_) => {
-                                let path = path.join("config.json");
+                    match create_dir_all(path) {
+                        Ok(_) => {
+                            let path = path.join("config.json");
 
-                                let oo = OpenOptions::new()
-                                    .create(true)
-                                    .write(true)
-                                    .open(&path)
-                                    .map_err(|ioe| ioe.kind());
+                            let oo = OpenOptions::new()
+                                .create(true)
+                                .write(true)
+                                .open(&path)
+                                .map_err(|ioe| ioe.kind());
 
-                                match oo {
-                                    Ok(mut f) => {
-                                        if let Err(e) = write!(f, "{}", st.as_str()) {
-                                            error!("Error writing {st:?} to file because of {e}");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        error!("Unable to create path at {path:?} due to {e:?}")
+                            match oo {
+                                Ok(mut f) => {
+                                    if let Err(e) = write!(f, "{}", st.as_str()) {
+                                        error!("Error writing {st:?} to file because of {e}");
                                     }
                                 }
+                                Err(e) => {
+                                    error!("Unable to create path at {path:?} due to {e:?}");
+                                }
                             }
-                            Err(e) => error!("Unable to create directory: {e}"),
                         }
+                        Err(e) => error!("Unable to create directory: {e}"),
                     }
-                    None => error!("Unable to find project dirs"),
-                },
-                Err(e) => error!("Unable to get string repr of {pc:?} through sj: {e}"),
-            }
-        });
-    }
+                }
+                None => error!("Unable to find project dirs"),
+            },
+            Err(e) => error!("Unable to get string repr of {pc:?} through sj: {e}"),
+        }
+    });
 }

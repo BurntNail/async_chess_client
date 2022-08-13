@@ -1,6 +1,7 @@
 use crate::{
     cacher::{Cacher, BOARD_S, TILE_S},
     chess::ChessPiece,
+    eyre,
     server_interface::{JSONMove, JSONPieceList},
 };
 use color_eyre::Report;
@@ -8,11 +9,8 @@ use graphics::DrawState;
 use piston_window::{
     clear, rectangle::square, Context, G2d, GfxDevice, Image, PistonWindow, Size, Transformed,
 };
-use reqwest::Client;
+use reqwest::{Client, ClientBuilder};
 use std::sync::RwLock;
-use crate::eyre;
-
-
 
 pub struct ChessGame {
     id: u32,
@@ -20,6 +18,7 @@ pub struct ChessGame {
     cached_pieces: RwLock<Vec<Option<ChessPiece>>>,
     last_pressed: Option<(u32, u32)>,
     client: Client,
+    no_connection_at_last_refresh: bool,
 }
 impl ChessGame {
     pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self, Report> {
@@ -28,7 +27,10 @@ impl ChessGame {
             c: Cacher::new_and_populate(win)?,
             cached_pieces: RwLock::new(vec![None; 64]),
             last_pressed: None,
-            client: Client::new(),
+            client: ClientBuilder::default()
+                .user_agent("J/AsyncChess")
+                .build()?,
+            no_connection_at_last_refresh: false,
         })
     }
 
@@ -39,9 +41,15 @@ impl ChessGame {
         ctx: Context,
         graphics: &mut G2d,
         _device: &mut GfxDevice,
-        mouse_coords: Option<(u32, u32)>,
-    ) -> Result<(), Report>{
+        mouse_coords: Option<(f64, f64)>,
+    ) -> Result<(), Report> {
         let window_scale = size.height / BOARD_S;
+        let mouse_coords = mouse_coords.map(|(x, y)| {
+            (
+                to_board_coord(x, window_scale),
+                to_board_coord(y, window_scale),
+            )
+        });
 
         clear([0.0; 4], graphics);
         let t = ctx.transform;
@@ -76,17 +84,20 @@ impl ChessGame {
             Ok(lock) => {
                 let mut errs = vec![];
 
-                for col in 0..8 {
-                    for row in 0..8 {
+                for col in 0..8_u32 {
+                    for row in 0..8_u32 {
                         let idx = row * 8 + col;
-                        if let Some(piece) = lock[idx] {
+                        if let Some(piece) = lock[idx as usize] {
                             match self.c.get(&piece.to_file_name()) {
                                 None => {
-                                    errs.push(eyre!("Cacher doesn't contain: {} at ({col}, {row})", piece.to_file_name()));
+                                    errs.push(eyre!(
+                                        "Cacher doesn't contain: {} at ({col}, {row})",
+                                        piece.to_file_name()
+                                    ));
                                 }
                                 Some(tex) => {
-                                    let x = col as f64 * (TILE_S + 2.0) * window_scale;
-                                    let y = row as f64 * (TILE_S + 2.0) * window_scale;
+                                    let x = f64::from(col) * (TILE_S + 2.0) * window_scale;
+                                    let y = f64::from(row) * (TILE_S + 2.0) * window_scale;
                                     let image =
                                         Image::new().rect(square(x, y, 20.0 * window_scale));
 
@@ -111,7 +122,6 @@ impl ChessGame {
                 if !errs.is_empty() {
                     return Err(eyre!("{errs:?}"));
                 }
-
             }
             Err(e) => {
                 return Err(eyre!("Unable to read vec: {e}"));
@@ -160,6 +170,7 @@ impl ChessGame {
                     ))
                     .send()
                     .await;
+
                 match rsp {
                     Ok(response) => {
                         info!("Update from server on moving: {:?}", response.text().await);
@@ -173,29 +184,35 @@ impl ChessGame {
     }
 
     ///Should be called ASAP after instantiating game, and often afterwards
+    #[tracing::instrument(skip(self))]
     pub async fn update_list(&mut self) -> Result<(), Report> {
-        let x: u32 = "lol".parse().unwrap();
-        info!("Never see {x}");
-
-        let result = self
+        let result_rsp = self
             .client
             .get(format!("http://109.74.205.63:12345/games/{}", self.id))
             .send()
-            .await?
-            .error_for_status()?
-            .json::<JSONPieceList>()
             .await;
-        match result {
-            Ok(jpl) => match self.cached_pieces.write() {
-                Ok(mut lock) => {
-                    *lock = jpl.to_game_list();
-                    Ok(())
+
+        match self.cached_pieces.write() {
+            Ok(mut lock) => {
+                match result_rsp {
+                    Ok(rsp) => {
+                        let jpl = rsp.error_for_status()?.json::<JSONPieceList>().await?;
+
+                        self.no_connection_at_last_refresh = false;
+                        *lock = jpl.to_game_list()?;
+                        Ok(())
+                    }
+                    Err(e) => {
+                        //Only for reqwest server errors (hopefully)
+                        if !self.no_connection_at_last_refresh {
+                            self.no_connection_at_last_refresh = true;
+                            *lock = JSONPieceList::no_connection_list();
+                        }
+                        Err(eyre!("Reqwest Error: {e}"))
+                    }
                 }
-                Err(e) => {
-                    Err(eyre!("Unable to populate due to {e}"))
-                }
-            },
-            Err(e) => Err(eyre!("Unable to parse result to a valid JSONPieceList: {e}"))
+            }
+            Err(e) => Err(eyre!("Unable to populate due to {e}")),
         }
     }
 
@@ -216,6 +233,7 @@ impl ChessGame {
     }
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn to_board_coord(p: f64, mult: f64) -> u32 {
     let tile_size = (TILE_S + 2.0) * mult;
     (p / tile_size).floor() as u32

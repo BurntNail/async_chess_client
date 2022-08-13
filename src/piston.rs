@@ -1,14 +1,9 @@
-use crate::{
-    cacher::BOARD_S,
-    game::{to_board_coord, ChessGame},
-};
-use color_eyre::Report;
+use crate::{cacher::BOARD_S, game::ChessGame};
 use piston_window::{
     Button, EventLoop, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent,
     UpdateEvent, Window, WindowSettings,
 };
 use serde::{Deserialize, Serialize};
-use crate::eyre;
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct PistonConfig {
@@ -16,9 +11,8 @@ pub struct PistonConfig {
     pub res: u32,
 }
 
-#[tracing::instrument]
-pub async fn piston_main(pc: PistonConfig) -> Result<(), Report> {
-
+#[tracing::instrument(skip(pc))]
+pub async fn piston_main(pc: PistonConfig) {
     let mut win: PistonWindow = WindowSettings::new("Async Chess", [pc.res, pc.res])
         .exit_on_esc(true)
         .resizable(true)
@@ -29,9 +23,12 @@ pub async fn piston_main(pc: PistonConfig) -> Result<(), Report> {
         });
     win.set_ups(5);
 
-    let mut game = ChessGame::new(&mut win, pc.id).map_err(|e| eyre!("Error making game: {e}"))?;
+    let mut game =
+        ChessGame::new(&mut win, pc.id).unwrap_or_else(|e| panic!("Error making game: {e}"));
 
-    game.update_list().await.map_err(|e| eyre!("Error on initial update: {e}"))?;
+    if let Err(e) = game.update_list().await {
+        error!("Error on initial update: {e}");
+    }
 
     let mut mouse_pos = (0.0, 0.0);
     while let Some(e) = win.next() {
@@ -39,20 +36,15 @@ pub async fn piston_main(pc: PistonConfig) -> Result<(), Report> {
 
         if let Some(_r) = e.render_args() {
             let window_scale = size.height / BOARD_S;
-            let mp = if mouse_pos.0 < 40.0 * window_scale
-                || mouse_pos.0 > 216.0 * window_scale
-                || mouse_pos.0 < 40.0 * window_scale
-                || mouse_pos.0 > 216.0 * window_scale
-            {
-                None
+            let mp = if mp_valid(mouse_pos, window_scale) {
+                // let inp = to_board_pixels(mouse_pos, window_scale);
+                // let px = to_board_coord(inp.0, window_scale);
+                // let py = to_board_coord(inp.1, window_scale);
+                // Some((px, py))
+                Some(to_board_pixels(mouse_pos, window_scale))
+
             } else {
-                let inp: (f64, f64) = (
-                    mouse_pos.0 - 40.0 * window_scale,
-                    mouse_pos.1 - 40.0 * window_scale,
-                );
-                let px = to_board_coord(inp.0, window_scale);
-                let py = to_board_coord(inp.1, window_scale);
-                Some((px, py))
+                None
             };
 
             win.draw_2d(&e, |c, g, device| {
@@ -86,16 +78,9 @@ pub async fn piston_main(pc: PistonConfig) -> Result<(), Report> {
 
                     if mb == MouseButton::Right {
                         game.clear_mouse_input();
-                    } else if !(mouse_pos.0 < 40.0 * window_scale
-                        || mouse_pos.0 > 216.0 * window_scale
-                        || mouse_pos.0 < 40.0 * window_scale
-                        || mouse_pos.0 > 216.0 * window_scale)
-                    {
-                        let inp = (
-                            mouse_pos.0 - 40.0 * window_scale,
-                            mouse_pos.1 - 40.0 * window_scale,
-                        );
-                        game.mouse_input(inp, size).await;
+                    } else if mp_valid(mouse_pos, window_scale) {
+                        game.mouse_input(to_board_pixels(mouse_pos, window_scale), size)
+                            .await;
                     }
 
                     game.update_list().await.unwrap_or_else(|err| {
@@ -108,6 +93,18 @@ pub async fn piston_main(pc: PistonConfig) -> Result<(), Report> {
 
         e.mouse_cursor(|p| mouse_pos = (p[0], p[1]));
     }
+}
 
-    Ok(())
+#[allow(clippy::nonminimal_bool)]
+fn mp_valid(mouse_pos: (f64, f64), window_scale: f64) -> bool {
+    mouse_pos.0 < 40.0 * window_scale
+        || mouse_pos.0 > 216.0 * window_scale
+        || mouse_pos.0 < 40.0 * window_scale
+        || mouse_pos.0 > 216.0 * window_scale
+}
+fn to_board_pixels(raw_mouse_pos: (f64, f64), window_scale: f64) -> (f64, f64) {
+    (
+        raw_mouse_pos.0 - 40.0 * window_scale,
+        raw_mouse_pos.1 - 40.0 * window_scale,
+    )
 }

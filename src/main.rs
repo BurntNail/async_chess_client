@@ -4,11 +4,8 @@
     clippy::missing_panics_doc,
     clippy::module_name_repetitions,
     clippy::multiple_crate_versions,
-    clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::use_self,
-    clippy::nonminimal_bool
+    clippy::future_not_send,
+    clippy::use_self
 )]
 
 mod cacher;
@@ -22,11 +19,11 @@ mod server_interface;
 extern crate tracing;
 
 pub use color_eyre::eyre::eyre;
+use color_eyre::{install, Report};
+use directories::ProjectDirs;
+use egui_launcher::egui_main;
 use piston::{piston_main, PistonConfig};
 use serde_json::from_str;
-use egui_launcher::egui_main;
-use color_eyre::{Report, install};
-use directories::ProjectDirs;
 use std::env::{args, set_var, var};
 use tokio::fs::read_to_string;
 use tracing::Level;
@@ -43,9 +40,7 @@ async fn main() {
 
     info!("Thanks to Devil's Workshop for the Chess Assets!");
 
-    if let Err(e) = start().await {
-        error!("Error from main function: {e}");
-    }
+    start().await;
 }
 
 #[tracing::instrument]
@@ -63,18 +58,16 @@ async fn setup_logging_tracing() -> Result<(), Report> {
         }
     }
 
-    
     install()?;
 
     Ok(())
 }
 
 #[tracing::instrument]
-async fn start() -> Result<(), Report> {
+async fn start() {
     let user_wants_conf = args()
         .nth(1)
-        .map(|s| s.chars().next())
-        .flatten()
+        .and_then(|s| s.chars().next())
         .map_or(false, |c| c != 'c');
 
     if !user_wants_conf {
@@ -91,7 +84,6 @@ async fn start() -> Result<(), Report> {
 
     info!("Running EGUI Config");
     egui_main();
-    return Ok(());
 }
 
 #[tracing::instrument]

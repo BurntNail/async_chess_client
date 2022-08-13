@@ -8,6 +8,8 @@ edition = "2021"
 [dependencies]
 color-eyre = { version = "0.6.2", features = ["url"] }
 directories = "4.0.1"
+eframe = { version = "0.18.0", features = ["dark-light"] }
+egui = { version = "0.18.1", features = ["tracing"] }
 find_folder = "0.3.0"
 piston2d-graphics = "0.42.0"
 piston_window = "0.124.0"

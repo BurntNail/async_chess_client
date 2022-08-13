@@ -13,6 +13,7 @@
 
 mod cacher;
 mod chess;
+mod egui_launcher;
 mod game;
 mod piston;
 mod server_interface;
@@ -23,8 +24,7 @@ extern crate tracing;
 pub use color_eyre::eyre::eyre;
 use piston::{piston_main, PistonConfig};
 use serde_json::from_str;
-
-use crate::egui::egui_main;
+use egui_launcher::egui_main;
 use color_eyre::{Report, install};
 use directories::ProjectDirs;
 use std::env::{args, set_var, var};
@@ -89,9 +89,8 @@ async fn start() -> Result<(), Report> {
         }
     }
 
-    // info!("Running EGUI Config");
-    // egui_main();
-    //TODO: conf with egui
+    info!("Running EGUI Config");
+    egui_main();
     return Ok(());
 }
 

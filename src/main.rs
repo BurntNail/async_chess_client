@@ -14,123 +14,100 @@
 mod cacher;
 mod chess;
 mod game;
+mod piston;
 mod server_interface;
 
 #[macro_use]
 extern crate tracing;
 
-use crate::{
-    cacher::BOARD_S,
-    game::{to_board_coord, ChessGame},
-};
-use piston_window::{
-    Button, EventLoop, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent,
-    UpdateEvent, Window, WindowSettings,
-};
+pub use color_eyre::eyre::eyre;
+use piston::{piston_main, PistonConfig};
+use serde_json::from_str;
+
+use crate::egui::egui_main;
+use color_eyre::{Report, install};
+use directories::ProjectDirs;
+use std::env::{args, set_var, var};
+use tokio::fs::read_to_string;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
+// use tracing_subscriber::{util::SubscriberInitExt, FmtSubscriber, Registry};
+// use tracing_tree::HierarchicalLayer;
 
 #[tokio::main]
 async fn main() {
-    {
-        let sub = FmtSubscriber::builder()
-            .with_max_level(Level::INFO)
-            .finish();
-        tracing::subscriber::set_global_default(sub).expect("Setting sub failed!");
+    if let Err(e) = setup_logging_tracing().await {
+        println!("Unable to setup logging/tracing uh oh: {e}");
+        std::process::exit(1);
     }
 
     info!("Thanks to Devil's Workshop for the Chess Assets!");
 
-    let mut win: PistonWindow = WindowSettings::new("Async Chess", [800, 800])
-        .exit_on_esc(true)
-        .resizable(true)
-        .build()
-        .unwrap_or_else(|e| {
-            error!("Error making window: {e}");
-            std::process::exit(1);
-        });
-    win.set_ups(25);
+    if let Err(e) = start().await {
+        error!("Error from main function: {e}");
+    }
+}
 
-    let mut game = ChessGame::new(&mut win).unwrap_or_else(|e| {
-        error!("Error making game: {e}");
-        std::process::exit(1);
-    });
-    game.update_list().await.unwrap_or_else(|err| {
-        error!("Unable to populate game: {err}");
-        std::process::exit(1);
-    });
+#[tracing::instrument]
+async fn setup_logging_tracing() -> Result<(), Report> {
+    let sub = FmtSubscriber::builder()
+        .with_max_level(Level::INFO)
+        // .with_(HierarchicalLayer::default())
+        .finish();
+    tracing::subscriber::set_global_default(sub)?;
 
-    let mut mouse_pos = (0.0, 0.0);
-    while let Some(e) = win.next() {
-        let size = win.size();
-
-        if let Some(_r) = e.render_args() {
-            let window_scale = size.height / BOARD_S;
-            let mp = if mouse_pos.0 < 40.0 * window_scale
-                || mouse_pos.0 > 216.0 * window_scale
-                || mouse_pos.0 < 40.0 * window_scale
-                || mouse_pos.0 > 216.0 * window_scale
-            {
-                None
-            } else {
-                let inp: (f64, f64) = (
-                    mouse_pos.0 - 40.0 * window_scale,
-                    mouse_pos.1 - 40.0 * window_scale,
-                );
-                let px = to_board_coord(inp.0, window_scale);
-                let py = to_board_coord(inp.1, window_scale);
-                Some((px, py))
-            };
-
-            win.draw_2d(&e, |c, g, device| {
-                game.render(size, c, g, device, mp);
-            });
+    for ntbs in &["RUST_LIB_BACKTRACE"] {
+        if var(ntbs).is_err() {
+            warn!("Setting {ntbs} to 1");
+            set_var(ntbs, "1");
         }
+    }
 
-        if let Some(_u) = e.update_args() {
-            game.update_list().await.unwrap_or_else(|err| {
-                error!("Unable to re-update list: {err}");
-            });
-        }
+    
+    install()?;
 
-        if let Some(pa) = e.press_args() {
-            match pa {
-                Button::Keyboard(kb) => {
-                    if kb == Key::C {
-                        //Clear
-                        game.restart_board().await.unwrap_or_else(|err| {
-                            error!("Unable to restart board: {err}");
-                        });
-                        game.update_list().await.unwrap_or_else(|err| {
-                            error!("Unable to re-update list: {err}");
-                        });
-                    }
-                }
-                Button::Mouse(mb) => {
-                    let window_scale = size.height / BOARD_S;
+    Ok(())
+}
 
-                    if mb == MouseButton::Right {
-                        game.clear_mouse_input();
-                    } else if !(mouse_pos.0 < 40.0 * window_scale
-                        || mouse_pos.0 > 216.0 * window_scale
-                        || mouse_pos.0 < 40.0 * window_scale
-                        || mouse_pos.0 > 216.0 * window_scale)
-                    {
-                        let inp = (
-                            mouse_pos.0 - 40.0 * window_scale,
-                            mouse_pos.1 - 40.0 * window_scale,
-                        );
-                        game.mouse_input(inp, size).await;
-                    }
+#[tracing::instrument]
+async fn start() -> Result<(), Report> {
+    let user_wants_conf = args()
+        .nth(1)
+        .map(|s| s.chars().next())
+        .flatten()
+        .map_or(false, |c| c != 'c');
 
-                    game.update_list().await.unwrap_or_else(|err| {
-                        error!("Unable to re-update list: {err}");
-                    });
-                }
-                _ => {}
+    if !user_wants_conf {
+        match read_config().await {
+            Ok(c) => {
+                info!("Running Async Chess");
+                return piston_main(c).await;
+            }
+            Err(e) => {
+                error!("Error finding config: {e}");
             }
         }
+    }
 
-        e.mouse_cursor(|p| mouse_pos = (p[0], p[1]));
+    // info!("Running EGUI Config");
+    // egui_main();
+    //TODO: conf with egui
+    return Ok(());
+}
+
+#[tracing::instrument]
+async fn read_config() -> Result<PistonConfig, Report> {
+    match ProjectDirs::from("com", "jackmaguire", "async_chess") {
+        Some(cd) => {
+            let path = cd.config_dir().join("config.json");
+            match read_to_string(&path).await {
+                Ok(cntnts) => match from_str::<PistonConfig>(&cntnts) {
+                    Ok(pc) => Ok(pc),
+                    Err(e) => Err(eyre!("Error reading {cntnts:?}: {e}")),
+                },
+                Err(e) => Err(eyre!("Error reading {path:?}: {e}")),
+            }
+        }
+        None => Err(eyre!("Unable to find project dirs")),
     }
 }

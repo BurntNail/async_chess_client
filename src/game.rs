@@ -3,33 +3,36 @@ use crate::{
     chess::ChessPiece,
     server_interface::{JSONMove, JSONPieceList},
 };
+use color_eyre::Report;
 use graphics::DrawState;
 use piston_window::{
     clear, rectangle::square, Context, G2d, GfxDevice, Image, PistonWindow, Size, Transformed,
 };
 use reqwest::Client;
 use std::sync::RwLock;
+use crate::eyre;
+
+
 
 pub struct ChessGame {
     id: u32,
     c: Cacher,
-    // requests: HashMap<RequestType, Promise<reqwest::Result<String>>>,
     cached_pieces: RwLock<Vec<Option<ChessPiece>>>,
     last_pressed: Option<(u32, u32)>,
     client: Client,
 }
 impl ChessGame {
-    pub fn new(win: &mut PistonWindow) -> Result<Self, find_folder::Error> {
+    pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self, Report> {
         Ok(Self {
-            id: 420, //TODO: opening menu, user chooses, maybe quick and dirty egui which launches the piston stuff
+            id,
             c: Cacher::new_and_populate(win)?,
-            // requests: Default::default(),
             cached_pieces: RwLock::new(vec![None; 64]),
             last_pressed: None,
             client: Client::new(),
         })
     }
 
+    #[tracing::instrument(skip(self, ctx, graphics, _device))]
     pub fn render(
         &mut self,
         size: Size,
@@ -37,7 +40,7 @@ impl ChessGame {
         graphics: &mut G2d,
         _device: &mut GfxDevice,
         mouse_coords: Option<(u32, u32)>,
-    ) {
+    ) -> Result<(), Report>{
         let window_scale = size.height / BOARD_S;
 
         clear([0.0; 4], graphics);
@@ -71,18 +74,19 @@ impl ChessGame {
 
         match self.cached_pieces.read() {
             Ok(lock) => {
+                let mut errs = vec![];
+
                 for col in 0..8 {
                     for row in 0..8 {
                         let idx = row * 8 + col;
                         if let Some(piece) = lock[idx] {
                             match self.c.get(&piece.to_file_name()) {
                                 None => {
-                                    error!("Cacher doesn't contain: {}", piece.to_file_name());
+                                    errs.push(eyre!("Cacher doesn't contain: {} at ({col}, {row})", piece.to_file_name()));
                                 }
                                 Some(tex) => {
                                     let x = col as f64 * (TILE_S + 2.0) * window_scale;
                                     let y = row as f64 * (TILE_S + 2.0) * window_scale;
-                                    // let trans: Matrix2d = trans.trans(x, y); //TODO: account for scaling lol
                                     let image =
                                         Image::new().rect(square(x, y, 20.0 * window_scale));
 
@@ -103,11 +107,18 @@ impl ChessGame {
                         }
                     }
                 }
+
+                if !errs.is_empty() {
+                    return Err(eyre!("{errs:?}"));
+                }
+
             }
             Err(e) => {
-                error!("Unable to read vec: {e}");
+                return Err(eyre!("Unable to read vec: {e}"));
             }
         }
+
+        Ok(())
     }
 
     pub async fn mouse_input(&mut self, mouse_pos: (f64, f64), size: Size) {
@@ -162,32 +173,33 @@ impl ChessGame {
     }
 
     ///Should be called ASAP after instantiating game, and often afterwards
-    pub async fn update_list(&mut self) -> Result<(), reqwest::Error> {
+    pub async fn update_list(&mut self) -> Result<(), Report> {
+        let x: u32 = "lol".parse().unwrap();
+        info!("Never see {x}");
+
         let result = self
             .client
             .get(format!("http://109.74.205.63:12345/games/{}", self.id))
             .send()
             .await?
-            //     .text()
-            //     .await?;
-            // info!("Got {result} from server");
+            .error_for_status()?
             .json::<JSONPieceList>()
             .await;
         match result {
             Ok(jpl) => match self.cached_pieces.write() {
                 Ok(mut lock) => {
                     *lock = jpl.to_game_list();
+                    Ok(())
                 }
                 Err(e) => {
-                    error!("Unable to populate due to {e}");
+                    Err(eyre!("Unable to populate due to {e}"))
                 }
             },
-            Err(e) => error!("Unable to parse result to a valid JSONPieceList: {e}"),
+            Err(e) => Err(eyre!("Unable to parse result to a valid JSONPieceList: {e}"))
         }
-
-        Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn restart_board(&mut self) -> Result<(), reqwest::Error> {
         let rsp = self
             .client

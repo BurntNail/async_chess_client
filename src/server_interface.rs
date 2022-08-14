@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Debug, Default)]
 pub struct JSONPieceList(pub Vec<JSONPiece>);
 
+pub type Board = Vec<Option<ChessPiece>>;
+
 #[derive(Deserialize, Debug)]
 pub struct JSONPiece {
     pub x: i32,
@@ -16,11 +18,19 @@ pub struct JSONPiece {
     pub is_white: bool,
 }
 
+impl TryInto<Board> for JSONPieceList {
+    type Error = Report;
+
+    fn try_into(self) -> Result<Board, Self::Error> {
+        self.into_game_list()
+    }
+}
+
 impl JSONPieceList {
     ///# Panics:
     ///Has the ability to panic, but if the server follows specs, should be fine
-    #[allow(clippy::wrong_self_convention)]
-    pub fn to_game_list(self) -> Result<Vec<Option<ChessPiece>>, Report> {
+    #[allow(clippy::cast_sign_loss)]
+    pub fn into_game_list(self) -> Result<Board, Report> {
         let mut v = vec![None; 8 * 8];
         for p in self.0 {
             if p.x == -1 && p.y == -1 {
@@ -43,7 +53,7 @@ impl JSONPieceList {
         Ok(v)
     }
 
-    pub fn no_connection_list() -> Vec<Option<ChessPiece>> {
+    pub fn no_connection_list() -> Board {
         let p = |x, y| JSONPiece {
             x,
             y,
@@ -86,7 +96,7 @@ impl JSONPieceList {
         //TODO: Make a JSON Chess Editor
 
         JSONPieceList(list)
-            .to_game_list()
+            .into_game_list()
             .expect("Error in list boi")
     }
 }

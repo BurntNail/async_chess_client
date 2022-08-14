@@ -1,7 +1,7 @@
 use crate::{cacher::BOARD_S, game::ChessGame};
 use piston_window::{
-    Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent,
-    UpdateEvent, Window, WindowSettings,
+    Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent, UpdateEvent,
+    Window, WindowSettings,
 };
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +38,6 @@ pub async fn piston_main(pc: PistonConfig) {
             let window_scale = size.height / BOARD_S;
             let mp = if mp_valid(mouse_pos, window_scale) {
                 Some(to_board_pixels(mouse_pos, window_scale))
-
             } else {
                 None
             };

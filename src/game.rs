@@ -1,8 +1,7 @@
 use crate::{
     cacher::{Cacher, BOARD_S, TILE_S},
-    chess::ChessPiece,
     eyre,
-    server_interface::{JSONMove, JSONPieceList},
+    server_interface::{Board, JSONMove, JSONPieceList},
 };
 use color_eyre::Report;
 use graphics::DrawState;
@@ -15,7 +14,7 @@ use std::sync::RwLock;
 pub struct ChessGame {
     id: u32,
     c: Cacher,
-    cached_pieces: RwLock<Vec<Option<ChessPiece>>>,
+    cached_pieces: RwLock<Board>,
     last_pressed: Option<(u32, u32)>,
     client: Client,
     no_connection_at_last_refresh: bool,
@@ -192,25 +191,31 @@ impl ChessGame {
             .send()
             .await;
 
+        let (mut list, ret) = match result_rsp {
+            Ok(rsp) => {
+                let jpl = rsp.error_for_status()?.json::<JSONPieceList>().await?;
+
+                self.no_connection_at_last_refresh = false;
+                (Some(jpl.into_game_list()?), Ok(()))
+            }
+            Err(e) => {
+                //Only for reqwest server errors (hopefully)
+                let l = if self.no_connection_at_last_refresh {
+                    None
+                } else {
+                    self.no_connection_at_last_refresh = true;
+                    Some(JSONPieceList::no_connection_list())
+                };
+                (l, Err(eyre!("Reqwest Error: {e}")))
+            }
+        }; //moved away to fix await errors with holding the lock
+
         match self.cached_pieces.write() {
             Ok(mut lock) => {
-                match result_rsp {
-                    Ok(rsp) => {
-                        let jpl = rsp.error_for_status()?.json::<JSONPieceList>().await?;
-
-                        self.no_connection_at_last_refresh = false;
-                        *lock = jpl.to_game_list()?;
-                        Ok(())
-                    }
-                    Err(e) => {
-                        //Only for reqwest server errors (hopefully)
-                        if !self.no_connection_at_last_refresh {
-                            self.no_connection_at_last_refresh = true;
-                            *lock = JSONPieceList::no_connection_list();
-                        }
-                        Err(eyre!("Reqwest Error: {e}"))
-                    }
+                if let Some(l) = list.take() {
+                    *lock = l;
                 }
+                ret
             }
             Err(e) => Err(eyre!("Unable to populate due to {e}")),
         }

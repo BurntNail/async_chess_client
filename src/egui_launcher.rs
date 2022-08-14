@@ -1,6 +1,6 @@
 use crate::piston::PistonConfig;
 use directories::ProjectDirs;
-use eframe::App;
+use eframe::{egui, App};
 use serde_json::to_string;
 use std::{
     fs::{create_dir_all, OpenOptions},

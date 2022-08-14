@@ -1,11 +1,9 @@
-#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+#![warn(clippy::all, clippy::pedantic)]
 #![allow(
     clippy::missing_errors_doc,
     clippy::missing_panics_doc,
     clippy::module_name_repetitions,
-    clippy::multiple_crate_versions,
-    clippy::future_not_send,
-    clippy::use_self
+    clippy::use_self,
 )]
 
 mod cacher;
@@ -24,10 +22,12 @@ use directories::ProjectDirs;
 use egui_launcher::egui_main;
 use piston::{piston_main, PistonConfig};
 use serde_json::from_str;
-use tracing_tree::HierarchicalLayer;
 use std::env::{args, set_var, var};
 use tokio::fs::read_to_string;
-use tracing_subscriber::{Registry, prelude::__tracing_subscriber_SubscriberExt, EnvFilter, util::SubscriberInitExt};
+use tracing_subscriber::{
+    prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry,
+};
+use tracing_tree::HierarchicalLayer;
 
 #[tokio::main]
 async fn main() {
@@ -50,15 +50,14 @@ async fn setup_logging_tracing() -> Result<(), Report> {
         }
     }
 
-
     Registry::default()
         .with(EnvFilter::from_default_env())
         .with(
             HierarchicalLayer::new(1)
                 .with_targets(true)
-                .with_bracketed_fields(true)
+                .with_bracketed_fields(true),
         )
-        .try_init()?;   
+        .try_init()?;
 
     install()?;
 

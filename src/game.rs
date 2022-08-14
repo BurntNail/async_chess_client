@@ -34,7 +34,7 @@ impl ChessGame {
         })
     }
 
-    #[tracing::instrument(skip(self, ctx, graphics, _device))]
+    // #[tracing::instrument(skip(self, ctx, graphics, _device))]
     pub fn render(
         &mut self,
         size: Size,
@@ -131,9 +131,8 @@ impl ChessGame {
         Ok(())
     }
 
-    pub async fn mouse_input(&mut self, mouse_pos: (f64, f64), size: Size) {
-        let mult = size.height / BOARD_S;
-
+    #[tracing::instrument(skip(self, mouse_pos))]
+    pub async fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) {
         match std::mem::take(&mut self.last_pressed) {
             None => {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
@@ -145,7 +144,7 @@ impl ChessGame {
                             self.last_pressed = Some((lp_x, lp_y));
                         }
                     }
-                    Err(err) => error!("Unable to read cached pieces: {err}"),
+                    Err(err) => error!(%err, "Unable to read cached pieces"),
                 }
             }
             Some(lp) => {
@@ -156,7 +155,7 @@ impl ChessGame {
                     (lp_x, lp_y)
                 };
 
-                info!("Dealing with a move from {lp:?} to {current_press:?}");
+                info!(last_pos=?lp, new_pos=?current_press, "Starting moving");
 
                 let rsp = self
                     .client
@@ -173,10 +172,11 @@ impl ChessGame {
 
                 match rsp {
                     Ok(response) => {
-                        info!("Update from server on moving: {:?}", response.text().await);
+                        info!(update=?response.text().await, "Update from server on moving");
+                        //TODO: communicate to user
                     }
                     Err(e) => {
-                        error!("Error in input response {e}");
+                        error!(%e, "Error in input response");
                     }
                 }
             }
@@ -184,7 +184,7 @@ impl ChessGame {
     }
 
     ///Should be called ASAP after instantiating game, and often afterwards
-    #[tracing::instrument(skip(self))]
+    // #[tracing::instrument(skip(self))]
     pub async fn update_list(&mut self) -> Result<(), Report> {
         let result_rsp = self
             .client
@@ -224,7 +224,7 @@ impl ChessGame {
             .body(self.id.to_string())
             .send()
             .await?;
-        info!("Update from server on restarting: {:?}", rsp.text().await);
+        info!(update=?rsp.text().await, "Update from server on restarting");
         Ok(())
     }
 

@@ -94,20 +94,20 @@ fn write_conf_to_file(pc: PistonConfig) {
                             match oo {
                                 Ok(mut f) => {
                                     if let Err(e) = write!(f, "{}", st.as_str()) {
-                                        error!("Error writing {st:?} to file because of {e}");
+                                        error!(%st, %e, "Error writing to file");
                                     }
                                 }
                                 Err(e) => {
-                                    error!("Unable to create path at {path:?} due to {e:?}");
+                                    error!(?path, error_kind=?e, "Unable to create file");
                                 }
                             }
                         }
-                        Err(e) => error!("Unable to create directory: {e}"),
+                        Err(e) => error!(%e, "Unable to create directory"),
                     }
                 }
                 None => error!("Unable to find project dirs"),
             },
-            Err(e) => error!("Unable to get string repr of {pc:?} through sj: {e}"),
+            Err(e) => error!(config=?pc, %e, "Unable to get string repr through sj"),
         }
     });
 }

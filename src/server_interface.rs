@@ -10,8 +10,8 @@ pub struct JSONPieceList(pub Vec<JSONPiece>);
 
 #[derive(Deserialize, Debug)]
 pub struct JSONPiece {
-    pub x: u32,
-    pub y: u32,
+    pub x: i32,
+    pub y: i32,
     pub kind: String,
     pub is_white: bool,
 }
@@ -23,6 +23,10 @@ impl JSONPieceList {
     pub fn to_game_list(self) -> Result<Vec<Option<ChessPiece>>, Report> {
         let mut v = vec![None; 8 * 8];
         for p in self.0 {
+            if p.x == -1 && p.y == -1 {
+                continue;
+            }
+
             let idx = (8 * p.y + p.x) as usize;
             let current = v.get_mut(idx).expect("Jack has messed up his maths");
 

@@ -1,6 +1,6 @@
 use crate::{cacher::BOARD_S, game::ChessGame};
 use piston_window::{
-    Button, EventLoop, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent,
+    Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent,
     UpdateEvent, Window, WindowSettings,
 };
 use serde::{Deserialize, Serialize};
@@ -18,16 +18,16 @@ pub async fn piston_main(pc: PistonConfig) {
         .resizable(true)
         .build()
         .unwrap_or_else(|e| {
-            error!("Error making window: {e}");
+            error!(%e, "Error making window");
             std::process::exit(1);
         });
-    win.set_ups(5);
+    // win.set_ups(5);
 
     let mut game =
         ChessGame::new(&mut win, pc.id).unwrap_or_else(|e| panic!("Error making game: {e}"));
 
     if let Err(e) = game.update_list().await {
-        error!("Error on initial update: {e}");
+        error!(%e, "Error on initial update");
     }
 
     let mut mouse_pos = (0.0, 0.0);
@@ -37,10 +37,6 @@ pub async fn piston_main(pc: PistonConfig) {
         if let Some(_r) = e.render_args() {
             let window_scale = size.height / BOARD_S;
             let mp = if mp_valid(mouse_pos, window_scale) {
-                // let inp = to_board_pixels(mouse_pos, window_scale);
-                // let px = to_board_coord(inp.0, window_scale);
-                // let py = to_board_coord(inp.1, window_scale);
-                // Some((px, py))
                 Some(to_board_pixels(mouse_pos, window_scale))
 
             } else {
@@ -49,27 +45,25 @@ pub async fn piston_main(pc: PistonConfig) {
 
             win.draw_2d(&e, |c, g, device| {
                 game.render(size, c, g, device, mp).unwrap_or_else(|e| {
-                    error!("Error rendering: {e}");
+                    error!(%e, "Error rendering");
                 });
             });
         }
 
         if let Some(_u) = e.update_args() {
             game.update_list().await.unwrap_or_else(|err| {
-                error!("Unable to re-update list: {err}");
+                error!(%err, "Unable to re-update list");
             });
         }
 
         if let Some(pa) = e.press_args() {
             match pa {
                 Button::Keyboard(kb) => {
+                    info!(?kb, "Keyboard Input");
                     if kb == Key::C {
                         //Clear
                         game.restart_board().await.unwrap_or_else(|err| {
-                            error!("Unable to restart board: {err}");
-                        });
-                        game.update_list().await.unwrap_or_else(|err| {
-                            error!("Unable to re-update list: {err}");
+                            error!(%err, "Unable to restart board");
                         });
                     }
                 }
@@ -79,16 +73,16 @@ pub async fn piston_main(pc: PistonConfig) {
                     if mb == MouseButton::Right {
                         game.clear_mouse_input();
                     } else if mp_valid(mouse_pos, window_scale) {
-                        game.mouse_input(to_board_pixels(mouse_pos, window_scale), size)
+                        game.mouse_input(to_board_pixels(mouse_pos, window_scale), window_scale)
                             .await;
                     }
-
-                    game.update_list().await.unwrap_or_else(|err| {
-                        error!("Unable to re-update list: {err}");
-                    });
                 }
                 _ => {}
             }
+
+            game.update_list().await.unwrap_or_else(|err| {
+                error!(%err, "Unable to re-update list");
+            });
         }
 
         e.mouse_cursor(|p| mouse_pos = (p[0], p[1]));

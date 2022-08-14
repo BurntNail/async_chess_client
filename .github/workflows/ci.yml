@@ -46,7 +46,7 @@ jobs:
 
   lints:
     name: Lints
-    needs: [check, run-tests]
+    needs: [check]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -88,7 +88,7 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
-    needs: [lints]
+    needs: [check, run-tests]
 
     steps:
     - uses: actions/checkout@v2
@@ -125,14 +125,14 @@ jobs:
       
     - uses: actions/upload-artifact@v3
       with:
-        name: Piston_Windows
+        name: Windows
         path: |
           target/release/async_chess_client.exe
           assets/
 
   build-linux:
     runs-on: ubuntu-latest
-    needs: [lints]
+    needs: [check, run-tests]
 
     steps:
       - uses: actions/checkout@v2
@@ -169,7 +169,7 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: Piston_Windows
+          name: Ubuntu
           path: |
            target/release/async_chess_client
            assets/

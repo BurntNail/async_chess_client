@@ -97,10 +97,10 @@ pub async fn piston_main(pc: PistonConfig) {
 
 #[allow(clippy::nonminimal_bool)]
 fn mp_valid(mouse_pos: (f64, f64), window_scale: f64) -> bool {
-    mouse_pos.0 < 40.0 * window_scale
-        || mouse_pos.0 > 216.0 * window_scale
-        || mouse_pos.0 < 40.0 * window_scale
-        || mouse_pos.0 > 216.0 * window_scale
+    mouse_pos.0 > 40.0 * window_scale
+        || mouse_pos.0 < 216.0 * window_scale
+        || mouse_pos.1 > 40.0 * window_scale
+        || mouse_pos.1 < 216.0 * window_scale
 }
 fn to_board_pixels(raw_mouse_pos: (f64, f64), window_scale: f64) -> (f64, f64) {
     (

@@ -5,8 +5,7 @@ pub struct MemoryTimedCacher<T, const N: usize> {
     data: [Option<T>; N],
     index: usize,
 
-    last_cached: Instant,
-    time_between_caches: Duration,
+    timer: DoOnInterval
 }
 
 impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
@@ -15,17 +14,15 @@ impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
         Self {
             data: [None; N],
             index: 0,
-            last_cached: Instant::now(),
-            time_between_caches: Duration::from_millis(100),
+            timer: DoOnInterval::new(Duration::from_millis(50))
         }
     }
 }
 
 impl<T: Clone + std::fmt::Debug, const N: usize> MemoryTimedCacher<T, N> {
     pub fn add(&mut self, t: T) {
-        if self.last_cached.elapsed() >= self.time_between_caches || self.data[0].is_none() {
-            self.last_cached = Instant::now();
 
+        if self.timer.do_check() || self.data[0].is_none() {
             self.data[self.index] = Some(t);
             self.index = (self.index + 1) % N;
         }
@@ -65,5 +62,28 @@ impl<T: Into<f64> + Clone + std::fmt::Debug, const N: usize> MemoryTimedCacher<T
         }
 
         total / count
+    }
+}
+
+
+#[derive(Debug)]
+pub struct DoOnInterval {
+    last_did: Instant,
+    gap: Duration
+}
+
+impl DoOnInterval {
+    pub fn new (gap: Duration) -> Self {
+        Self { last_did: Instant::now(), gap }
+    }
+
+    pub fn do_check (&mut self) -> bool {
+        if self.last_did.elapsed() > self.gap {
+            self.last_did = Instant::now();
+
+            true
+        } else {
+            false
+        }
     }
 }

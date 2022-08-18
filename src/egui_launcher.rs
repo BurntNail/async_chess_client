@@ -8,11 +8,11 @@ use std::{
 };
 
 #[tracing::instrument]
-pub fn egui_main() {
+pub fn egui_main(uc: Option<PistonConfig>) {
     eframe::run_native(
         "Async Chess Configurator",
         eframe::NativeOptions::default(),
-        Box::new(|_cc| Box::new(AsyncChessLauncher::new())),
+        Box::new(move |_cc| Box::new(AsyncChessLauncher::new(uc))),
     );
 }
 
@@ -23,10 +23,16 @@ struct AsyncChessLauncher {
 }
 
 impl AsyncChessLauncher {
-    pub fn new() -> Self {
-        Self {
-            id: "0".into(),
-            res: "600".into(),
+    pub fn new(start_uc: Option<PistonConfig>) -> Self {
+        match start_uc {
+            Some(PistonConfig { id, res }) => Self {
+                id: id.to_string(),
+                res: res.to_string(),
+            },
+            None => Self {
+                id: "0".into(),
+                res: "600".into(),
+            },
         }
     }
 }
@@ -54,7 +60,9 @@ impl App for AsyncChessLauncher {
                 }
             });
 
-            if ui.button("Start Game.").clicked() {
+            ui.separator();
+
+            if ui.button("Save and Exit.").clicked() {
                 frame.quit();
             }
         });

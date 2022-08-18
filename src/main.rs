@@ -10,7 +10,7 @@ mod cacher;
 mod chess;
 mod egui_launcher;
 mod game;
-mod memory_cacher;
+mod time_based_structs;
 mod piston;
 mod server_interface;
 

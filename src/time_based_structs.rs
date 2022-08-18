@@ -5,7 +5,7 @@ pub struct MemoryTimedCacher<T, const N: usize> {
     data: [Option<T>; N],
     index: usize,
 
-    timer: DoOnInterval
+    timer: DoOnInterval,
 }
 
 impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
@@ -14,14 +14,13 @@ impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
         Self {
             data: [None; N],
             index: 0,
-            timer: DoOnInterval::new(Duration::from_millis(50))
+            timer: DoOnInterval::new(Duration::from_millis(50)),
         }
     }
 }
 
 impl<T: Clone + std::fmt::Debug, const N: usize> MemoryTimedCacher<T, N> {
     pub fn add(&mut self, t: T) {
-
         if self.timer.do_check() || self.data[0].is_none() {
             self.data[self.index] = Some(t);
             self.index = (self.index + 1) % N;
@@ -65,19 +64,21 @@ impl<T: Into<f64> + Clone + std::fmt::Debug, const N: usize> MemoryTimedCacher<T
     }
 }
 
-
 #[derive(Debug)]
 pub struct DoOnInterval {
     last_did: Instant,
-    gap: Duration
+    gap: Duration,
 }
 
 impl DoOnInterval {
-    pub fn new (gap: Duration) -> Self {
-        Self { last_did: Instant::now(), gap }
+    pub fn new(gap: Duration) -> Self {
+        Self {
+            last_did: Instant::now(),
+            gap,
+        }
     }
 
-    pub fn do_check (&mut self) -> bool {
+    pub fn do_check(&mut self) -> bool {
         if self.last_did.elapsed() > self.gap {
             self.last_did = Instant::now();
 
@@ -85,5 +86,25 @@ impl DoOnInterval {
         } else {
             false
         }
+    }
+}
+
+pub struct ScopedTimer {
+    msg: String,
+    start_time: Instant,
+}
+
+impl ScopedTimer {
+    pub fn new(msg: String) -> Self {
+        Self {
+            msg,
+            start_time: Instant::now(),
+        }
+    }
+}
+
+impl Drop for ScopedTimer {
+    fn drop(&mut self) {
+        info!(time_taken=?self.start_time.elapsed(), msg=%self.msg);
     }
 }

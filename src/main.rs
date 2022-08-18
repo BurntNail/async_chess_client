@@ -10,9 +10,9 @@ mod cacher;
 mod chess;
 mod egui_launcher;
 mod game;
-mod time_based_structs;
 mod piston;
 mod server_interface;
+mod time_based_structs;
 
 #[macro_use]
 extern crate tracing;

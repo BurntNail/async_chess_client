@@ -12,6 +12,7 @@ mod egui_launcher;
 mod game;
 mod piston;
 mod server_interface;
+mod memory_cacher;
 
 #[macro_use]
 extern crate tracing;

@@ -126,13 +126,12 @@ jobs:
     - uses: actions/upload-artifact@v3
       with:
         name: WindowsClient
-        path: |
-          assets/
+        path: assets/
+
     - uses: actions/upload-artifact@v3
       with:
         name: WindowsClient
-        path: |
-          target/release/async_chess_client.exe
+        path: target/release/async_chess_client.exe
 
   build-linux:
     runs-on: ubuntu-latest

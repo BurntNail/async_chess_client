@@ -138,6 +138,7 @@ impl ChessGame {
 
     #[tracing::instrument(skip(self))]
     pub async fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) {
+
         match std::mem::take(&mut self.last_pressed) {
             None => {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
@@ -145,7 +146,7 @@ impl ChessGame {
 
                 match self.cached_pieces.read() {
                     Ok(lock) => {
-                        if lock.get(lp_y as usize * 8 + lp_x as usize).is_some() {
+                        if matches!(lock.get(lp_y as usize * 8 + lp_x as usize), Some(Some(_))) {
                             self.last_pressed = Some((lp_x, lp_y));
                         }
                     }

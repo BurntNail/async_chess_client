@@ -10,6 +10,8 @@ pub struct JSONPieceList(pub Vec<JSONPiece>);
 
 pub type Board = Vec<Option<ChessPiece>>;
 
+
+
 #[derive(Deserialize, Debug)]
 pub struct JSONPiece {
     pub x: i32,
@@ -32,11 +34,8 @@ impl JSONPieceList {
     #[allow(clippy::cast_sign_loss)]
     pub fn into_game_list(self) -> Result<Board, Report> {
         let mut v = vec![None; 8 * 8];
-        for p in self.0 {
-            if p.x == -1 && p.y == -1 {
-                continue;
-            }
-
+        for p in self.0.into_iter().filter(|p| p.x != -1 && p.y != -1) {
+            
             let idx = (8 * p.y + p.x) as usize;
             let current = v.get_mut(idx).expect("Jack has messed up his maths");
 

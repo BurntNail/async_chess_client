@@ -57,7 +57,7 @@ impl JSONPieceList {
         let p = |x, y| JSONPiece {
             x,
             y,
-            is_white: false,
+            is_white: (x + y) % 2 == 1, //why not
             kind: "rook".into(),
         };
         let list = vec![
@@ -92,12 +92,21 @@ impl JSONPieceList {
             p(7, 7),
         ];
 
+        // let mut list = Vec::with_capacity(8 * 8);
+        // for x in 0..8 {
+        //     for y in 0..8 {
+        //         list.push(p(x, y));
+        //     }
+        // }
+        //debug list
+
         //TODO: Change this to read from JSON in data dir
         //TODO: Make a JSON Chess Editor
 
         JSONPieceList(list)
             .into_game_list()
             .expect("Error in list boi")
+        // Board::default()
     }
 }
 

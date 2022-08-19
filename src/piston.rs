@@ -50,10 +50,9 @@ pub async fn piston_main(pc: PistonConfig) {
             };
 
             win.draw_2d(&e, |c, g, _device| {
-                game.render(c, g, mp, window_scale)
-                    .unwrap_or_else(|e| {
-                        error!(%e, "Error rendering");
-                    });
+                game.render(c, g, mp, window_scale).unwrap_or_else(|e| {
+                    error!(%e, "Error rendering");
+                });
             });
         }
 

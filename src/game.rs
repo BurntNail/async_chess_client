@@ -2,13 +2,12 @@ use crate::{
     cacher::{Cacher, TILE_S},
     chess::ChessPiece,
     eyre,
-    server_interface::{Board, JSONMove, JSONPieceList}, time_based_structs::{DoOnInterval, ScopedTimer},
+    server_interface::{Board, JSONMove, JSONPieceList},
+    time_based_structs::{DoOnInterval, ScopedTimer},
 };
 use color_eyre::Report;
 use graphics::DrawState;
-use piston_window::{
-    clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed,
-};
+use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use reqwest::{Client, ClientBuilder, StatusCode};
 use std::{sync::RwLock, time::Duration};
 
@@ -25,7 +24,7 @@ pub struct ChessGame {
     last_pressed: Option<(u32, u32)>,
     client: Client,
     reqwest_error_at_last_refresh: bool,
-    refresh_timer: DoOnInterval
+    refresh_timer: DoOnInterval,
 }
 impl ChessGame {
     pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self, Report> {
@@ -193,11 +192,10 @@ impl ChessGame {
     // #[tracing::instrument(skip(self))]
     pub async fn update_list(&mut self) -> Result<(), Report> {
         if !self.refresh_timer.do_check() {
-            return Ok(())
+            return Ok(());
         }
         info!("Passed timer, refreshing");
         let _st = ScopedTimer::new("Updating List");
-        
 
         let result_rsp = self
             .client

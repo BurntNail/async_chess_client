@@ -34,18 +34,17 @@ impl<T: Clone + std::fmt::Debug, const N: usize> MemoryTimedCacher<T, N> {
             return vec![];
         }
 
-        let end_index = if self.index == N - 1 {
-            N - 1
-        } else if self.data[self.index + 1].is_some() {
-            N - 1
-        } else {
-            self.index
-        };
+        let end_index =
+            if self.index == N - 1 || matches!(self.data.get(self.index + 1), Some(Some(_))) {
+                N - 1
+            } else {
+                self.index
+            };
 
         self.data[0..end_index]
-            .into_iter()
+            .iter()
             .cloned()
-            .map(Option::unwrap)
+            .map(|opt| opt.expect("LOGIC ERROR IN TBS"))
             .collect()
     }
 }

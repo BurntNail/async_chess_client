@@ -73,7 +73,7 @@ pub struct DoOnInterval {
 impl DoOnInterval {
     pub fn new(gap: Duration) -> Self {
         Self {
-            last_did: Instant::now(),
+            last_did: Instant::now() - Duration::from_secs(1),
             gap,
         }
     }
@@ -95,9 +95,9 @@ pub struct ScopedTimer {
 }
 
 impl ScopedTimer {
-    pub fn new(msg: String) -> Self {
+    pub fn new(msg: impl Into<String>) -> Self {
         Self {
-            msg,
+            msg: msg.into(),
             start_time: Instant::now(),
         }
     }

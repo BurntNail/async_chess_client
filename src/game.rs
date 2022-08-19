@@ -1,15 +1,22 @@
 use crate::{
-    cacher::{Cacher, BOARD_S, TILE_S},
+    cacher::{Cacher, TILE_S},
+    chess::ChessPiece,
     eyre,
-    server_interface::{Board, JSONMove, JSONPieceList},
+    server_interface::{Board, JSONMove, JSONPieceList}, time_based_structs::{DoOnInterval, ScopedTimer},
 };
 use color_eyre::Report;
 use graphics::DrawState;
 use piston_window::{
-    clear, rectangle::square, Context, G2d, GfxDevice, Image, PistonWindow, Size, Transformed,
+    clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed,
 };
-use reqwest::{Client, ClientBuilder};
-use std::sync::RwLock;
+use reqwest::{Client, ClientBuilder, StatusCode};
+use std::{sync::RwLock, time::Duration};
+
+enum UpdateAction {
+    NewList(Vec<Option<ChessPiece>>),
+    ReqwestError(reqwest::Error),
+    UseExisting(Option<reqwest::Error>),
+}
 
 pub struct ChessGame {
     id: u32,
@@ -17,7 +24,8 @@ pub struct ChessGame {
     cached_pieces: RwLock<Board>,
     last_pressed: Option<(u32, u32)>,
     client: Client,
-    no_connection_at_last_refresh: bool,
+    reqwest_error_at_last_refresh: bool,
+    refresh_timer: DoOnInterval
 }
 impl ChessGame {
     pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self, Report> {
@@ -27,22 +35,21 @@ impl ChessGame {
             cached_pieces: RwLock::new(vec![None; 64]),
             last_pressed: None,
             client: ClientBuilder::default()
-                .user_agent("J/AsyncChess")
+                .user_agent("JackyBoi/AsyncChess")
                 .build()?,
-            no_connection_at_last_refresh: false,
+            reqwest_error_at_last_refresh: false,
+            refresh_timer: DoOnInterval::new(Duration::from_millis(250)),
         })
     }
 
     // #[tracing::instrument(skip(self, ctx, graphics, _device))]
     pub fn render(
         &mut self,
-        size: Size,
         ctx: Context,
         graphics: &mut G2d,
-        _device: &mut GfxDevice,
         mouse_coords: Option<(f64, f64)>,
+        window_scale: f64,
     ) -> Result<(), Report> {
-        let window_scale = size.height / BOARD_S;
         let mouse_coords = mouse_coords.map(|(x, y)| {
             (
                 to_board_coord(x, window_scale),
@@ -130,7 +137,7 @@ impl ChessGame {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, mouse_pos))]
+    #[tracing::instrument(skip(self))]
     pub async fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) {
         match std::mem::take(&mut self.last_pressed) {
             None => {
@@ -185,51 +192,86 @@ impl ChessGame {
     ///Should be called ASAP after instantiating game, and often afterwards
     // #[tracing::instrument(skip(self))]
     pub async fn update_list(&mut self) -> Result<(), Report> {
+        if !self.refresh_timer.do_check() {
+            return Ok(())
+        }
+        info!("Passed timer, refreshing");
+        let _st = ScopedTimer::new("Updating List");
+        
+
         let result_rsp = self
             .client
             .get(format!("http://109.74.205.63:12345/games/{}", self.id))
             .send()
             .await;
 
-        let (mut list, ret) = match result_rsp {
+        let list = match result_rsp {
             Ok(rsp) => {
-                let jpl = rsp.error_for_status()?.json::<JSONPieceList>().await?;
+                // let jpl = rsp.error_for_status()?.json::<JSONPieceList>().await?;
+                let rsp = rsp.error_for_status()?;
+                self.reqwest_error_at_last_refresh = false;
 
-                self.no_connection_at_last_refresh = false;
-                (Some(jpl.into_game_list()?), Ok(()))
+                if rsp.status() == StatusCode::ALREADY_REPORTED {
+                    UpdateAction::UseExisting(None)
+                } else {
+                    UpdateAction::NewList(rsp.json::<JSONPieceList>().await?.into_game_list()?)
+                }
             }
             Err(e) => {
-                //Only for reqwest server errors (hopefully)
-                let l = if self.no_connection_at_last_refresh {
-                    None
+                if self.reqwest_error_at_last_refresh {
+                    UpdateAction::UseExisting(Some(e))
                 } else {
-                    self.no_connection_at_last_refresh = true;
-                    Some(JSONPieceList::no_connection_list())
-                };
-                (l, Err(eyre!("Reqwest Error: {e}")))
+                    self.reqwest_error_at_last_refresh = true;
+                    UpdateAction::ReqwestError(e)
+                }
             }
         }; //moved away to fix await errors with holding the lock
 
         match self.cached_pieces.write() {
-            Ok(mut lock) => {
-                if let Some(l) = list.take() {
-                    *lock = l;
+            Ok(mut lock) => match list {
+                UpdateAction::NewList(nl) => {
+                    *lock = nl;
+                    Ok(())
                 }
-                ret
-            }
+                UpdateAction::ReqwestError(e) => {
+                    *lock = JSONPieceList::no_connection_list();
+                    Err(e.into())
+                }
+                UpdateAction::UseExisting(e) => match e {
+                    Some(e) => Err(e.into()),
+                    None => Ok(()),
+                },
+            },
             Err(e) => Err(eyre!("Unable to populate due to {e}")),
         }
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn restart_board(&mut self) -> Result<(), reqwest::Error> {
+    pub async fn restart_board(&mut self) -> Result<(), Report> {
         let rsp = self
             .client
             .post("http://109.74.205.63:12345/newgame")
             .body(self.id.to_string())
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
+
         info!(update=?rsp.text().await, "Update from server on restarting");
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn exit(self) -> Result<(), Report> {
+        let rsp = self
+            .client
+            .post("http://109.74.205.63:12345/invalidate")
+            .body(self.id.to_string())
+            .send()
+            .await?
+            .error_for_status()?;
+
+        info!(update=?rsp.text().await, "Update from server on invalidating cache: ");
+
         Ok(())
     }
 
@@ -240,6 +282,5 @@ impl ChessGame {
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn to_board_coord(p: f64, mult: f64) -> u32 {
-    let tile_size = (TILE_S + 2.0) * mult;
-    (p / tile_size).floor() as u32
+    (p / ((TILE_S + 2.0) * mult)).floor() as u32
 }

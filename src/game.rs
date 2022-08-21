@@ -42,6 +42,7 @@ impl ChessGame {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     // #[tracing::instrument(skip(self, ctx, graphics, _device))]
     pub fn render(
         &mut self,
@@ -135,16 +136,13 @@ impl ChessGame {
                 }
 
                 {
-                    let (rawx, rawy) = raw_mouse_coords;
+                    let (raw_x, raw_y) = raw_mouse_coords;
                     if let Some((lp_x, lp_y)) = self.last_pressed {
                         if let Some(piece) = lock[(lp_x * 8 + lp_y) as usize] {
                             if let Some(tex) = self.c.get(&piece.to_file_name()) {
                                 let s = TILE_S * window_scale / 1.5;
-                                let image = Image::new().rect(square(
-                                    rawx - s/2.0,
-                                    rawy - s/2.0,
-                                    s,
-                                ));
+                                let image =
+                                    Image::new().rect(square(raw_x - s / 2.0, raw_y - s / 2.0, s));
                                 image.draw(tex, &DrawState::default(), t, graphics);
                             } else {
                                 errs.push(eyre!(
@@ -153,7 +151,7 @@ impl ChessGame {
                                 ));
                             }
                         } else {
-                            error!(%lp_x, %lp_y, "No piece at last pressed - hmm")
+                            error!(%lp_x, %lp_y, "No piece at last pressed - hmm");
                         }
                     }
                 }
@@ -214,7 +212,16 @@ impl ChessGame {
                         //TODO: communicate to user
                     }
                     Err(e) => {
-                        error!(%e, "Error in input response");
+                        if let Some(sc) = e.status() {
+                            if sc == StatusCode::PRECONDITION_FAILED {
+                                error!("Invalid move");
+                                self.last_pressed = Some(lp);
+                            } else {
+                                error!(%e, %sc, "Error in input response");
+                            }
+                        } else {
+                            error!(%e, "Error in input response");
+                        }
                     }
                 }
             }

@@ -141,11 +141,8 @@ impl ChessGame {
                         if let Some(piece) = lock[(lp_x * 8 + lp_y) as usize] {
                             if let Some(tex) = self.c.get(&piece.to_file_name()) {
                                 let s = TILE_S * window_scale / 1.5;
-                                let image = Image::new().rect(square(
-                                    raw_x - s/2.0,
-                                    raw_y - s/2.0,
-                                    s,
-                                ));
+                                let image =
+                                    Image::new().rect(square(raw_x - s / 2.0, raw_y - s / 2.0, s));
                                 image.draw(tex, &DrawState::default(), t, graphics);
                             } else {
                                 errs.push(eyre!(
@@ -216,7 +213,16 @@ impl ChessGame {
                         //TODO: communicate to user
                     }
                     Err(e) => {
-                        error!(%e, "Error in input response");
+                        if let Some(sc) = e.status() {
+                            if sc == StatusCode::PRECONDITION_FAILED {
+                                error!("Invalid move");
+                                self.last_pressed = Some(lp);
+                            } else {
+                                error!(%e, %sc, "Error in input response");
+                            }
+                        } else {
+                            error!(%e, "Error in input response");
+                        }
                     }
                 }
             }

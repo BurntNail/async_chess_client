@@ -43,16 +43,12 @@ pub async fn piston_main(pc: PistonConfig) {
             cached_dt.add(r.ext_dt);
 
             let window_scale = size.height / BOARD_S;
-            let mp = if mp_valid(mouse_pos, window_scale) {
-                Some(to_board_pixels(mouse_pos, window_scale))
-            } else {
-                None
-            };
 
             win.draw_2d(&e, |c, g, _device| {
-                game.render(c, g, mp, window_scale).unwrap_or_else(|e| {
-                    error!(%e, "Error rendering");
-                });
+                game.render(c, g, mouse_pos, window_scale)
+                    .unwrap_or_else(|e| {
+                        error!(%e, "Error rendering");
+                    });
             });
         }
 
@@ -101,7 +97,7 @@ pub async fn piston_main(pc: PistonConfig) {
 }
 
 ///Must always be called BEFORE [`to_board_pixels`]
-fn mp_valid(mouse_pos: (f64, f64), window_scale: f64) -> bool {
+pub fn mp_valid(mouse_pos: (f64, f64), window_scale: f64) -> bool {
     mouse_pos.0 > 40.0 * window_scale
         && mouse_pos.0 < 216.0 * window_scale
         && mouse_pos.1 > 40.0 * window_scale
@@ -109,7 +105,7 @@ fn mp_valid(mouse_pos: (f64, f64), window_scale: f64) -> bool {
 }
 
 ///Must always be called AFTER [`mp_valid`]
-fn to_board_pixels(raw_mouse_pos: (f64, f64), window_scale: f64) -> (f64, f64) {
+pub fn to_board_pixels(raw_mouse_pos: (f64, f64), window_scale: f64) -> (f64, f64) {
     (
         raw_mouse_pos.0 - 40.0 * window_scale,
         raw_mouse_pos.1 - 40.0 * window_scale,

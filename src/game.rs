@@ -2,6 +2,7 @@ use crate::{
     cacher::{Cacher, TILE_S},
     chess::ChessPiece,
     eyre,
+    piston::{mp_valid, to_board_pixels},
     server_interface::{Board, JSONMove, JSONPieceList},
     time_based_structs::{DoOnInterval, ScopedTimer},
 };
@@ -46,15 +47,18 @@ impl ChessGame {
         &mut self,
         ctx: Context,
         graphics: &mut G2d,
-        mouse_coords: Option<(f64, f64)>,
+        raw_mouse_coords: (f64, f64),
         window_scale: f64,
     ) -> Result<(), Report> {
-        let mouse_coords = mouse_coords.map(|(x, y)| {
-            (
-                to_board_coord(x, window_scale),
-                to_board_coord(y, window_scale),
-            )
-        });
+        let board_coords = if mp_valid(raw_mouse_coords, window_scale) {
+            let bps = to_board_pixels(raw_mouse_coords, window_scale);
+            Some((
+                to_board_coord(bps.0, window_scale),
+                to_board_coord(bps.1, window_scale),
+            ))
+        } else {
+            None
+        };
 
         clear([0.0; 4], graphics);
         let t = ctx.transform;
@@ -71,7 +75,7 @@ impl ChessGame {
         let trans = t.trans(41.0 * window_scale, 41.0 * window_scale);
 
         {
-            if let Some((px, py)) = mouse_coords {
+            if let Some((px, py)) = board_coords {
                 let x = f64::from(px) * (TILE_S + 2.0) * window_scale;
                 let y = f64::from(py) * (TILE_S + 2.0) * window_scale;
                 let image = Image::new().rect(square(x, y, 20.0 * window_scale));
@@ -92,6 +96,7 @@ impl ChessGame {
                 for col in 0..8_u32 {
                     for row in 0..8_u32 {
                         let idx = row * 8 + col;
+
                         if let Some(piece) = lock[idx as usize] {
                             match self.c.get(&piece.to_file_name()) {
                                 None => {
@@ -104,22 +109,51 @@ impl ChessGame {
                                     let x = f64::from(col) * (TILE_S + 2.0) * window_scale;
                                     let y = f64::from(row) * (TILE_S + 2.0) * window_scale;
                                     let image =
-                                        Image::new().rect(square(x, y, 20.0 * window_scale));
+                                        Image::new().rect(square(x, y, TILE_S * window_scale));
 
-                                    image.draw(tex, &DrawState::default(), trans, graphics);
+                                    let mut draw =
+                                        || image.draw(tex, &DrawState::default(), trans, graphics);
 
                                     if let Some((lp_x, lp_y)) = self.last_pressed {
                                         if lp_x == col as u32 && lp_y == row as u32 {
                                             image.draw(
-                                                self.c.get("selected.png").unwrap(),
+                                                self.c.get("selected.png").expect("Unable to find selected.png - check your assets folder"),
                                                 &DrawState::default(),
                                                 trans,
                                                 graphics,
                                             );
+                                        } else {
+                                            draw();
                                         }
+                                    } else {
+                                        draw();
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                {
+                    let (rawx, rawy) = raw_mouse_coords;
+                    if let Some((lp_x, lp_y)) = self.last_pressed {
+                        if let Some(piece) = lock[(lp_x * 8 + lp_y) as usize] {
+                            if let Some(tex) = self.c.get(&piece.to_file_name()) {
+                                let s = TILE_S * window_scale / 1.5;
+                                let image = Image::new().rect(square(
+                                    rawx - s/2.0,
+                                    rawy - s/2.0,
+                                    s,
+                                ));
+                                image.draw(tex, &DrawState::default(), t, graphics);
+                            } else {
+                                errs.push(eyre!(
+                                    "Cacher doesn't contain: {} at ({lp_x}, {lp_y} floating)",
+                                    piece.to_file_name()
+                                ));
+                            }
+                        } else {
+                            error!(%lp_x, %lp_y, "No piece at last pressed - hmm")
                         }
                     }
                 }
@@ -138,7 +172,6 @@ impl ChessGame {
 
     #[tracing::instrument(skip(self))]
     pub async fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) {
-
         match std::mem::take(&mut self.last_pressed) {
             None => {
                 let lp_x = to_board_coord(mouse_pos.0, mult);

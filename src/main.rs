@@ -24,24 +24,23 @@ use egui_launcher::egui_main;
 use piston::{piston_main, PistonConfig};
 use serde_json::from_str;
 use std::env::{args, set_var, var};
-use tokio::fs::read_to_string;
+use std::fs::read_to_string;
 use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 use tracing_tree::HierarchicalLayer;
 
-#[tokio::main]
-async fn main() {
-    if let Err(e) = setup_logging_tracing().await {
+fn main() {
+    if let Err(e) = setup_logging_tracing() {
         println!("Unable to setup logging/tracing: {e}");
         std::process::exit(1);
     }
 
     info!("Thanks to Devil's Workshop for the Chess Assets!");
 
-    start().await;
+    start();
 }
 
 #[tracing::instrument]
-async fn setup_logging_tracing() -> Result<(), Report> {
+fn setup_logging_tracing() -> Result<(), Report> {
     for (k, v) in &[("RUST_LIB_BACKTRACE", "1"), ("RUST_LOG", "info")] {
         if var(k).is_err() {
             println!("Setting {k} to {v}");
@@ -66,7 +65,7 @@ async fn setup_logging_tracing() -> Result<(), Report> {
 }
 
 #[tracing::instrument]
-async fn start() {
+fn start() {
     let user_wants_conf = args()
         .nth(1)
         .and_then(|s| s.chars().next())
@@ -74,13 +73,13 @@ async fn start() {
 
     info!(%user_wants_conf, a=?args());
 
-    let uc = match read_config().await {
+    let uc = match read_config() {
         Ok(c) => {
             if user_wants_conf {
                 Some(c)
             } else {
                 info!("Running Async Chess");
-                return piston_main(c).await;
+                return piston_main(c);
             }
         }
         Err(e) => {
@@ -94,11 +93,11 @@ async fn start() {
 }
 
 #[tracing::instrument]
-async fn read_config() -> Result<PistonConfig, Report> {
+fn read_config() -> Result<PistonConfig, Report> {
     match ProjectDirs::from("com", "jackmaguire", "async_chess") {
         Some(cd) => {
             let path = cd.config_dir().join("config.json");
-            match read_to_string(&path).await {
+            match read_to_string(&path) {
                 Ok(cntnts) => match from_str::<PistonConfig>(&cntnts) {
                     Ok(pc) => Ok(pc),
                     Err(e) => Err(eyre!("Error reading {cntnts:?}: {e}")),

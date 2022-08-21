@@ -9,7 +9,7 @@ use crate::{
 use color_eyre::Report;
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
-use reqwest::{Client, ClientBuilder, StatusCode};
+use reqwest::{blocking::{Client, ClientBuilder}, StatusCode};
 use std::{sync::RwLock, time::Duration};
 
 enum UpdateAction {
@@ -171,7 +171,7 @@ impl ChessGame {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) {
+    pub fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) {
         match std::mem::take(&mut self.last_pressed) {
             None => {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
@@ -206,12 +206,11 @@ impl ChessGame {
                         current_press.0,
                         current_press.1,
                     ))
-                    .send()
-                    .await;
+                    .send();
 
                 match rsp {
                     Ok(response) => {
-                        info!(update=?response.text().await, "Update from server on moving");
+                        info!(update=?response.text(), "Update from server on moving");
                         //TODO: communicate to user
                     }
                     Err(e) => {
@@ -224,7 +223,7 @@ impl ChessGame {
 
     ///Should be called ASAP after instantiating game, and often afterwards
     // #[tracing::instrument(skip(self))]
-    pub async fn update_list(&mut self) -> Result<(), Report> {
+    pub fn update_list(&mut self) -> Result<(), Report> {
         if !self.refresh_timer.do_check() {
             return Ok(());
         }
@@ -234,19 +233,18 @@ impl ChessGame {
         let result_rsp = self
             .client
             .get(format!("http://109.74.205.63:12345/games/{}", self.id))
-            .send()
-            .await;
+            .send();
 
         let list = match result_rsp {
             Ok(rsp) => {
-                // let jpl = rsp.error_for_status()?.json::<JSONPieceList>().await?;
+                // let jpl = rsp.error_for_status()?.json::<JSONPieceList>()?;
                 let rsp = rsp.error_for_status()?;
                 self.reqwest_error_at_last_refresh = false;
 
                 if rsp.status() == StatusCode::ALREADY_REPORTED {
                     UpdateAction::UseExisting(None)
                 } else {
-                    UpdateAction::NewList(rsp.json::<JSONPieceList>().await?.into_game_list()?)
+                    UpdateAction::NewList(rsp.json::<JSONPieceList>()?.into_game_list()?)
                 }
             }
             Err(e) => {
@@ -257,7 +255,7 @@ impl ChessGame {
                     UpdateAction::ReqwestError(e)
                 }
             }
-        }; //moved away to fix await errors with holding the lock
+        }; 
 
         match self.cached_pieces.write() {
             Ok(mut lock) => match list {
@@ -279,30 +277,28 @@ impl ChessGame {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn restart_board(&mut self) -> Result<(), Report> {
+    pub fn restart_board(&mut self) -> Result<(), Report> {
         let rsp = self
             .client
             .post("http://109.74.205.63:12345/newgame")
             .body(self.id.to_string())
-            .send()
-            .await?
+            .send()?
             .error_for_status()?;
 
-        info!(update=?rsp.text().await, "Update from server on restarting");
+        info!(update=?rsp.text(), "Update from server on restarting");
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn exit(self) -> Result<(), Report> {
+    pub fn exit(self) -> Result<(), Report> {
         let rsp = self
             .client
             .post("http://109.74.205.63:12345/invalidate")
             .body(self.id.to_string())
-            .send()
-            .await?
+            .send()?
             .error_for_status()?;
 
-        info!(update=?rsp.text().await, "Update from server on invalidating cache: ");
+        info!(update=?rsp.text(), "Update from server on invalidating cache: ");
 
         Ok(())
     }

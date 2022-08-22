@@ -106,7 +106,7 @@ impl JSONPieceList {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct JSONMove {
     pub id: u32,
     pub x: u32,

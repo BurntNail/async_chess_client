@@ -1,4 +1,4 @@
-#![warn(clippy::all, clippy::pedantic)]
+#![warn(clippy::all, clippy::pedantic, clippy::derivable_impls)]
 #![allow(
     clippy::missing_errors_doc,
     clippy::missing_panics_doc,
@@ -10,6 +10,7 @@ mod cacher;
 mod chess;
 mod egui_launcher;
 mod game;
+mod list_refresher;
 mod piston;
 mod server_interface;
 mod time_based_structs;

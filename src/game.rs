@@ -184,14 +184,16 @@ impl ChessGame {
 
                 info!(last_pos=?lp, new_pos=?current_press, "Starting moving");
 
-                self.refresher
-                    .send_msg(MessageToWorker::MakeMove(JSONMove::new(
-                        self.id,
-                        lp.0,
-                        lp.1,
-                        current_press.0,
-                        current_press.1,
-                    )));
+                if let Err(e) = self.refresher
+                .send_msg(MessageToWorker::MakeMove(JSONMove::new(
+                    self.id,
+                    lp.0,
+                    lp.1,
+                    current_press.0,
+                    current_press.1,
+                ))) {
+                    warn!(%e, "Error sending message to worker re move");
+                }
                 self.ex_last_pressed = Some(lp);
             }
         }
@@ -199,6 +201,7 @@ impl ChessGame {
 
     ///Should be called ASAP after instantiating game, and often afterwards
     // #[tracing::instrument(skip(self))]
+    #[allow(irrefutable_let_patterns)]
     pub fn update_list(&mut self) -> Result<(), SendError<MessageToWorker>> {
         match self.refresher.try_recv() {
             Ok(msg) => {

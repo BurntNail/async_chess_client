@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-color-eyre = { version = "0.6.2", features = ["url"] }
+anyhow = { version = "1.0.62", features = ["backtrace"] }
 directories = "4.0.1"
 eframe = { version = "0.18.0", features = ["dark-light"] }
 find_folder = "0.3.0"

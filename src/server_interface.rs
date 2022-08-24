@@ -1,9 +1,10 @@
 use crate::{
     chess::{ChessPiece, ChessPieceKind},
-    eyre,
 };
-use color_eyre::Report;
+use anyhow::{Context, Error};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use crate::error_ext::ErrorExt;
 
 #[derive(Deserialize, Debug, Default)]
 pub struct JSONPieceList(pub Vec<JSONPiece>);
@@ -19,7 +20,7 @@ pub struct JSONPiece {
 }
 
 impl TryInto<Board> for JSONPieceList {
-    type Error = Report;
+    type Error = Error;
 
     fn try_into(self) -> Result<Board, Self::Error> {
         self.into_game_list()
@@ -30,14 +31,14 @@ impl JSONPieceList {
     ///# Panics:
     ///Has the ability to panic, but if the server follows specs, should be fine
     #[allow(clippy::cast_sign_loss)]
-    pub fn into_game_list(self) -> Result<Board, Report> {
+    pub fn into_game_list(self) -> Result<Board> {
         let mut v = vec![None; 8 * 8];
         for p in self.0.into_iter().filter(|p| p.x != -1 && p.y != -1) {
             let idx = (8 * p.y + p.x) as usize;
             let current = v.get_mut(idx).expect("Jack has messed up his maths");
 
             if current.is_some() {
-                return Err(eyre!("Collision at ({}, {})", p.x, p.y));
+                bail!("Collision at ({}, {})", p.x, p.y);
             }
 
             *current = Some(ChessPiece {
@@ -88,21 +89,13 @@ impl JSONPieceList {
             p(7, 7),
         ];
 
-        // let mut list = Vec::with_capacity(8 * 8);
-        // for x in 0..8 {
-        //     for y in 0..8 {
-        //         list.push(p(x, y));
-        //     }
-        // }
-        //debug list
-
         //TODO: Change this to read from JSON in data dir
         //TODO: Make a JSON Chess Editor
 
         JSONPieceList(list)
             .into_game_list()
-            .expect("Error in list boi")
-        // Board::default()
+            .context("turning uh oh to an actual list")
+            .unwrap_log()
     }
 }
 

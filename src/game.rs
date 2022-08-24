@@ -1,11 +1,9 @@
 use crate::{
     cacher::{Cacher, TILE_S},
-    eyre,
     list_refresher::{ListRefresher, MessageToGame, MessageToWorker},
     piston::{mp_valid, to_board_pixels},
     server_interface::{Board, JSONMove},
 };
-use color_eyre::Report;
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use reqwest::StatusCode;
@@ -13,6 +11,7 @@ use std::sync::{
     mpsc::{SendError, TryRecvError},
     Arc, RwLock,
 };
+use anyhow::{Result, Context as _};
 
 pub struct ChessGame {
     id: u32,
@@ -23,11 +22,11 @@ pub struct ChessGame {
     refresher: ListRefresher,
 }
 impl ChessGame {
-    pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self, Report> {
+    pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self> {
         let cps = Arc::new(RwLock::new(vec![None; 64]));
         Ok(Self {
             id,
-            c: Cacher::new_and_populate(win)?,
+            c: Cacher::new_and_populate(win).context("making cacher and populating it")?,
             cached_pieces: cps.clone(),
             refresher: ListRefresher::new(cps, id),
             last_pressed: None,
@@ -35,7 +34,6 @@ impl ChessGame {
         })
     }
 
-    #[allow(clippy::too_many_lines)]
     // #[tracing::instrument(skip(self, ctx, graphics, _device))]
     pub fn render(
         &mut self,
@@ -43,7 +41,7 @@ impl ChessGame {
         graphics: &mut G2d,
         raw_mouse_coords: (f64, f64),
         window_scale: f64,
-    ) -> Result<(), Report> {
+    ) -> Result<()> {
         let board_coords = if mp_valid(raw_mouse_coords, window_scale) {
             let bps = to_board_pixels(raw_mouse_coords, window_scale);
             Some((
@@ -94,7 +92,7 @@ impl ChessGame {
                         if let Some(piece) = lock[idx as usize] {
                             match self.c.get(&piece.to_file_name()) {
                                 None => {
-                                    errs.push(eyre!(
+                                    errs.push(anyhow!(
                                         "Cacher doesn't contain: {} at ({col}, {row})",
                                         piece.to_file_name()
                                     ));
@@ -138,23 +136,21 @@ impl ChessGame {
                                     Image::new().rect(square(raw_x - s / 2.0, raw_y - s / 2.0, s));
                                 image.draw(tex, &DrawState::default(), t, graphics);
                             } else {
-                                errs.push(eyre!(
+                                errs.push(anyhow!(
                                     "Cacher doesn't contain: {} at ({lp_x}, {lp_y} floating)",
                                     piece.to_file_name()
                                 ));
                             }
-                        } else {
-                            error!(%lp_x, %lp_y, "No piece at last pressed - hmm");
-                        }
+                        } //because of the new thread system this can often occur - prev there was an error! here
                     }
                 }
 
                 if !errs.is_empty() {
-                    return Err(eyre!("{errs:?}"));
+                    bail!("{errs:?}");
                 }
             }
             Err(e) => {
-                return Err(eyre!("Unable to read vec: {e}"));
+                bail!("Unable to read vec: {e}");
             }
         }
 
@@ -242,13 +238,13 @@ impl ChessGame {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn restart_board(&mut self) -> Result<(), SendError<MessageToWorker>> {
-        self.refresher.send_msg(MessageToWorker::RestartBoard)
+    pub fn restart_board(&mut self) -> Result<()> {
+        self.refresher.send_msg(MessageToWorker::RestartBoard).context("sending restart msg to board")
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn exit(self) -> Result<(), SendError<MessageToWorker>> {
-        self.refresher.send_msg(MessageToWorker::InvalidateKill)
+    pub fn exit(self) -> Result<()> {
+        self.refresher.send_msg(MessageToWorker::InvalidateKill).context("sending invalidatekill msg to board")
     }
 
     pub fn clear_mouse_input(&mut self) {

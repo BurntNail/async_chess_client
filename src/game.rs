@@ -1,7 +1,7 @@
 use crate::{
     cacher::{Cacher, TILE_S},
     eyre,
-    list_refresher::{ListRefresher, MessageToWorker, MessageToGame},
+    list_refresher::{ListRefresher, MessageToGame, MessageToWorker},
     piston::{mp_valid, to_board_pixels},
     server_interface::{Board, JSONMove},
 };
@@ -9,7 +9,10 @@ use color_eyre::Report;
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use reqwest::StatusCode;
-use std::sync::{mpsc::{SendError, TryRecvError}, Arc, RwLock};
+use std::sync::{
+    mpsc::{SendError, TryRecvError},
+    Arc, RwLock,
+};
 
 pub struct ChessGame {
     id: u32,
@@ -26,7 +29,7 @@ impl ChessGame {
             id,
             c: Cacher::new_and_populate(win)?,
             cached_pieces: cps.clone(),
-            refresher: ListRefresher::new(cps, id)?,
+            refresher: ListRefresher::new(cps, id),
             last_pressed: None,
             ex_last_pressed: None,
         })
@@ -184,14 +187,16 @@ impl ChessGame {
 
                 info!(last_pos=?lp, new_pos=?current_press, "Starting moving");
 
-                if let Err(e) = self.refresher
-                .send_msg(MessageToWorker::MakeMove(JSONMove::new(
-                    self.id,
-                    lp.0,
-                    lp.1,
-                    current_press.0,
-                    current_press.1,
-                ))) {
+                if let Err(e) = self
+                    .refresher
+                    .send_msg(MessageToWorker::MakeMove(JSONMove::new(
+                        self.id,
+                        lp.0,
+                        lp.1,
+                        current_press.0,
+                        current_press.1,
+                    )))
+                {
                     warn!(%e, "Error sending message to worker re move");
                 }
                 self.ex_last_pressed = Some(lp);
@@ -225,12 +230,12 @@ impl ChessGame {
                         }
                     }
                 }
-            },
+            }
             Err(e) => {
                 if e != TryRecvError::Empty {
                     error!(%e, "Try recv error from worker");
                 }
-            },
+            }
         }
 
         self.refresher.send_msg(MessageToWorker::UpdateList)

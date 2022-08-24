@@ -4,6 +4,7 @@ use crate::{
     time_based_structs::{DoOnInterval, ScopedTimer},
 };
 use color_eyre::Report;
+use reqwest::Error as RError;
 use reqwest::{
     blocking::{ClientBuilder, Response},
     StatusCode,
@@ -14,9 +15,8 @@ use std::{
         Arc, Mutex, RwLock,
     },
     thread::JoinHandle,
-    time::Duration,
+    time::{Duration, Instant},
 };
-use reqwest::Error as RError;
 
 //TODO: More flexible calling API - eg. give an endpoint and an either
 //TODO: Local move, until server refresh for movepiece
@@ -46,118 +46,132 @@ enum UpdateAction {
     UseExisting(Option<reqwest::Error>),
 }
 
-fn run_loop (mtw_rx: Receiver<MessageToWorker>, mtg_tx: Sender<MessageToGame>, id: u32, cached_pieces: Arc<RwLock<Board>>) -> Result<(), Report> {
+fn run_loop(
+    mtw_rx: Receiver<MessageToWorker>,
+    mtg_tx: Sender<MessageToGame>,
+    id: u32,
+    cached_pieces: Arc<RwLock<Board>>,
+) -> Result<(), Report> {
     let inflight = Mutex::new(());
-            let client = ClientBuilder::default()
-                .user_agent("JackyBoi/AsyncChess")
-                .build().expect("Unable to build client due to async runtime");
-            let mut refresh_timer = DoOnInterval::new(Duration::from_millis(250));
-            let mut reqwest_error_at_last_refresh = false;
-    
-    loop {
-        if let Ok(msg) = mtw_rx.try_recv() {
-            let _ = inflight.lock().expect("Unable to unlock IF mutex");
+    let client = ClientBuilder::default()
+        .user_agent("JackyBoi/AsyncChess")
+        .build()
+        .expect("Unable to build client due to async runtime");
+    let mut refresh_timer = DoOnInterval::new(Duration::from_millis(250));
+    let mut reqwest_error_at_last_refresh = false;
 
-            match msg {
-                MessageToWorker::UpdateList => {
-                    if !refresh_timer.do_check() {
-                        continue;
+    while let Ok(msg) = mtw_rx.recv() {
+        let _lock = inflight.lock().expect("Unable to unlock IF mutex");
+
+        match msg {
+            MessageToWorker::UpdateList => {
+                if !refresh_timer.do_check() {
+                    continue;
+                }
+                info!("Passed timer, refreshing");
+                let _st = ScopedTimer::new("Updating List");
+
+                let result_rsp = client
+                    .get(format!("http://109.74.205.63:12345/games/{}", id))
+                    .send();
+
+                let list = match result_rsp {
+                    Ok(rsp) => {
+                        let rsp = rsp.error_for_status()?;
+                        reqwest_error_at_last_refresh = false;
+
+                        if rsp.status() == StatusCode::ALREADY_REPORTED {
+                            UpdateAction::UseExisting(None)
+                        } else {
+                            UpdateAction::NewList(rsp.json::<JSONPieceList>()?.into_game_list()?)
+                        }
                     }
-                    info!("Passed timer, refreshing");
-                    let _st = ScopedTimer::new("Updating List");
-
-                    let result_rsp = client
-                        .get(format!("http://109.74.205.63:12345/games/{}", id))
-                        .send();
-
-                    let list = match result_rsp {
-                        Ok(rsp) => {
-                            let rsp = rsp.error_for_status()?;
-                            reqwest_error_at_last_refresh = false;
-
-                            if rsp.status() == StatusCode::ALREADY_REPORTED {
-                                UpdateAction::UseExisting(None)
-                            } else {
-                                UpdateAction::NewList(
-                                    rsp.json::<JSONPieceList>()?.into_game_list()?,
-                                )
-                            }
+                    Err(e) => {
+                        if reqwest_error_at_last_refresh {
+                            UpdateAction::UseExisting(Some(e))
+                        } else {
+                            reqwest_error_at_last_refresh = true;
+                            UpdateAction::ReqwestError(e)
                         }
-                        Err(e) => {
-                            if reqwest_error_at_last_refresh {
-                                UpdateAction::UseExisting(Some(e))
-                            } else {
-                                reqwest_error_at_last_refresh = true;
-                                UpdateAction::ReqwestError(e)
-                            }
-                        }
-                    };
+                    }
+                };
 
-                    match cached_pieces.write() {
-                        Ok(mut lock) => match list {
-                            UpdateAction::NewList(nl) => {
-                                *lock = nl;
-                            }
-                            UpdateAction::ReqwestError(e) => {
-                                *lock = JSONPieceList::no_connection_list();
-                                error!(%e, "Error for reqwest");
-                            }
-                            UpdateAction::UseExisting(e) => match e {
-                                Some(e) => {
-                                    warn!(%e, "Using existing list");
-                                }
-                                _ => {}
-                            },
-                        },
-                        Err(e) => {
-                            break Err(eyre!(
-                                "Unable to populate due to posion error: {e}"
-                            ));
+                match cached_pieces.write() {
+                    Ok(mut lock) => match list {
+                        UpdateAction::NewList(nl) => {
+                            *lock = nl;
                         }
+                        UpdateAction::ReqwestError(e) => {
+                            *lock = JSONPieceList::no_connection_list();
+                            error!(%e, "Error for reqwest");
+                        }
+                        UpdateAction::UseExisting(e) => if let Some(e) = e {
+                            warn!(%e, "Using existing list");
+                        }
+                    },
+                    Err(e) => {
+                        return Err(eyre!("Unable to populate due to posion error: {e}"));
                     }
                 }
-                MessageToWorker::RestartBoard => {
-                    match client
+            }
+            MessageToWorker::RestartBoard => {
+                match client
                     .post("http://109.74.205.63:12345/newgame")
-                    .body(id.to_string()).send() {
-                        Ok(rsp) => match rsp.error_for_status() {
-                            Ok(rsp) => info!(update=?rsp.text(), "Update from server on restarting"),
-                            Err(e) => warn!(%e, "Error code from server on restarting"),
-                        },
-                        Err(e) => error!(%e, "Error restarting"),
-                    }                    
+                    .body(id.to_string())
+                    .send()
+                {
+                    Ok(rsp) => match rsp.error_for_status() {
+                        Ok(rsp) => info!(update=?rsp.text(), "Update from server on restarting"),
+                        Err(e) => warn!(%e, "Error code from server on restarting"),
+                    },
+                    Err(e) => error!(%e, "Error restarting"),
                 }
-                MessageToWorker::MakeMove(m) => {
-                    let rsp = client
-                        .post("http://109.74.205.63:12345/movepiece")
-                        .json(&m)
-                        .send();
-                    
-                    if let Err(e) = mtg_tx.send(MessageToGame::Response(rsp)) {
-                        warn!(%e, "Error sending message to game re moving piece");
+            }
+            MessageToWorker::MakeMove(m) => {
+                let rsp = client
+                    .post("http://109.74.205.63:12345/movepiece")
+                    .json(&m)
+                    .send();
+
+                let now = Instant::now();
+                let mut fin = false;
+                while now.elapsed() < Duration::from_millis(50) || !fin {
+                    if let Ok(mut lock) = cached_pieces.try_write() {
+                        lock[(m.ny * 8 + m.nx) as usize] = lock[(m.y * 8 + m.x) as usize];
+                        fin = true;
                     }
                 }
-                MessageToWorker::InvalidateKill => {
-                    match client
-                    .post("http://109.74.205.63:12345/invalidate")
-                    .body(id.to_string()).send() {
-                        Ok(rsp) => match rsp.error_for_status() {
-                            Ok(rsp) => info!(update=?rsp.text(), "Update from server on invalidating"),
-                            Err(e) => warn!(%e, "Error code from server on invalidating"),
-                        },
-                        Err(e) => error!(%e, "Error invalidating"),
-                    }     
 
-                    info!("Ending refresher");
-                    break Ok(());
+                if let Err(e) = mtg_tx.send(MessageToGame::Response(rsp)) {
+                    warn!(%e, "Error sending message to game re moving piece");
                 }
+            }
+            MessageToWorker::InvalidateKill => {
+                info!("IK");
+
+                match client
+                    .post("http://109.74.205.63:12345/invalidate")
+                    .body(id.to_string())
+                    .send()
+                {
+                    Ok(rsp) => match rsp.error_for_status() {
+                        Ok(rsp) => info!(update=?rsp.text(), "Update from server on invalidating"),
+                        Err(e) => warn!(%e, "Error code from server on invalidating"),
+                    },
+                    Err(e) => error!(%e, "Error invalidating"),
+                }
+
+                info!("Ending refresher");
+                break;
             }
         }
     }
+
+    Ok(())
 }
 
 impl ListRefresher {
-    pub fn new(cached_pieces: Arc<RwLock<Board>>, id: u32) -> Result<Self, Report> {
+    pub fn new(cached_pieces: Arc<RwLock<Board>>, id: u32) -> Self {
         let (mtw_tx, mtw_rx) = channel();
         let (mtg_tx, mtg_rx) = channel();
 
@@ -167,17 +181,17 @@ impl ListRefresher {
             }
         });
 
-        Ok(Self {
+        Self {
             handle: Some(thread),
             tx: mtw_tx,
             rx: mtg_rx,
-        })
+        }
     }
 
     pub fn send_msg(&self, m: MessageToWorker) -> Result<(), SendError<MessageToWorker>> {
         self.tx.send(m)
     }
-    pub fn try_recv (&self) -> Result<MessageToGame, TryRecvError> {
+    pub fn try_recv(&self) -> Result<MessageToGame, TryRecvError> {
         self.rx.try_recv()
     }
 }

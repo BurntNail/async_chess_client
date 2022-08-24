@@ -3,7 +3,9 @@
     clippy::missing_errors_doc,
     clippy::missing_panics_doc,
     clippy::module_name_repetitions,
-    clippy::use_self
+    clippy::use_self,
+    clippy::too_many_lines,
+    clippy::needless_pass_by_value
 )]
 
 mod cacher;

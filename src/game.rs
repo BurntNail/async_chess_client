@@ -1,48 +1,39 @@
 use crate::{
     cacher::{Cacher, TILE_S},
-    chess::ChessPiece,
-    eyre,
+    list_refresher::{ListRefresher, MessageToGame, MessageToWorker},
     piston::{mp_valid, to_board_pixels},
-    server_interface::{Board, JSONMove, JSONPieceList},
-    time_based_structs::{DoOnInterval, ScopedTimer},
+    server_interface::{Board, JSONMove},
 };
-use color_eyre::Report;
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
-use reqwest::{Client, ClientBuilder, StatusCode};
-use std::{sync::RwLock, time::Duration};
-
-enum UpdateAction {
-    NewList(Vec<Option<ChessPiece>>),
-    ReqwestError(reqwest::Error),
-    UseExisting(Option<reqwest::Error>),
-}
+use reqwest::StatusCode;
+use std::sync::{
+    mpsc::{SendError, TryRecvError},
+    Arc, RwLock,
+};
+use anyhow::{Result, Context as _};
 
 pub struct ChessGame {
     id: u32,
     c: Cacher,
-    cached_pieces: RwLock<Board>,
+    cached_pieces: Arc<RwLock<Board>>,
     last_pressed: Option<(u32, u32)>,
-    client: Client,
-    reqwest_error_at_last_refresh: bool,
-    refresh_timer: DoOnInterval,
+    ex_last_pressed: Option<(u32, u32)>,
+    refresher: ListRefresher,
 }
 impl ChessGame {
-    pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self, Report> {
+    pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self> {
+        let cps = Arc::new(RwLock::new(vec![None; 64]));
         Ok(Self {
             id,
-            c: Cacher::new_and_populate(win)?,
-            cached_pieces: RwLock::new(vec![None; 64]),
+            c: Cacher::new_and_populate(win).context("making cacher and populating it")?,
+            cached_pieces: cps.clone(),
+            refresher: ListRefresher::new(cps, id),
             last_pressed: None,
-            client: ClientBuilder::default()
-                .user_agent("JackyBoi/AsyncChess")
-                .build()?,
-            reqwest_error_at_last_refresh: false,
-            refresh_timer: DoOnInterval::new(Duration::from_millis(250)),
+            ex_last_pressed: None,
         })
     }
 
-    #[allow(clippy::too_many_lines)]
     // #[tracing::instrument(skip(self, ctx, graphics, _device))]
     pub fn render(
         &mut self,
@@ -50,7 +41,7 @@ impl ChessGame {
         graphics: &mut G2d,
         raw_mouse_coords: (f64, f64),
         window_scale: f64,
-    ) -> Result<(), Report> {
+    ) -> Result<()> {
         let board_coords = if mp_valid(raw_mouse_coords, window_scale) {
             let bps = to_board_pixels(raw_mouse_coords, window_scale);
             Some((
@@ -101,7 +92,7 @@ impl ChessGame {
                         if let Some(piece) = lock[idx as usize] {
                             match self.c.get(&piece.to_file_name()) {
                                 None => {
-                                    errs.push(eyre!(
+                                    errs.push(anyhow!(
                                         "Cacher doesn't contain: {} at ({col}, {row})",
                                         piece.to_file_name()
                                     ));
@@ -138,30 +129,28 @@ impl ChessGame {
                 {
                     let (raw_x, raw_y) = raw_mouse_coords;
                     if let Some((lp_x, lp_y)) = self.last_pressed {
-                        if let Some(piece) = lock[(lp_x * 8 + lp_y) as usize] {
+                        if let Some(piece) = lock[(lp_y * 8 + lp_x) as usize] {
                             if let Some(tex) = self.c.get(&piece.to_file_name()) {
                                 let s = TILE_S * window_scale / 1.5;
                                 let image =
                                     Image::new().rect(square(raw_x - s / 2.0, raw_y - s / 2.0, s));
                                 image.draw(tex, &DrawState::default(), t, graphics);
                             } else {
-                                errs.push(eyre!(
+                                errs.push(anyhow!(
                                     "Cacher doesn't contain: {} at ({lp_x}, {lp_y} floating)",
                                     piece.to_file_name()
                                 ));
                             }
-                        } else {
-                            error!(%lp_x, %lp_y, "No piece at last pressed - hmm");
-                        }
+                        } //because of the new thread system this can often occur - prev there was an error! here
                     }
                 }
 
                 if !errs.is_empty() {
-                    return Err(eyre!("{errs:?}"));
+                    bail!("{errs:?}");
                 }
             }
             Err(e) => {
-                return Err(eyre!("Unable to read vec: {e}"));
+                bail!("Unable to read vec: {e}");
             }
         }
 
@@ -169,7 +158,7 @@ impl ChessGame {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) {
+    pub fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) {
         match std::mem::take(&mut self.last_pressed) {
             None => {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
@@ -194,124 +183,68 @@ impl ChessGame {
 
                 info!(last_pos=?lp, new_pos=?current_press, "Starting moving");
 
-                let rsp = self
-                    .client
-                    .post("http://109.74.205.63:12345/movepiece")
-                    .json(&JSONMove::new(
+                if let Err(e) = self
+                    .refresher
+                    .send_msg(MessageToWorker::MakeMove(JSONMove::new(
                         self.id,
                         lp.0,
                         lp.1,
                         current_press.0,
                         current_press.1,
-                    ))
-                    .send()
-                    .await;
-
-                match rsp {
-                    Ok(response) => {
-                        info!(update=?response.text().await, "Update from server on moving");
-                        //TODO: communicate to user
-                    }
-                    Err(e) => {
-                        if let Some(sc) = e.status() {
-                            if sc == StatusCode::PRECONDITION_FAILED {
-                                error!("Invalid move");
-                                self.last_pressed = Some(lp);
-                            } else {
-                                error!(%e, %sc, "Error in input response");
-                            }
-                        } else {
-                            error!(%e, "Error in input response");
-                        }
-                    }
+                    )))
+                {
+                    warn!(%e, "Error sending message to worker re move");
                 }
+                self.ex_last_pressed = Some(lp);
             }
         }
     }
 
     ///Should be called ASAP after instantiating game, and often afterwards
     // #[tracing::instrument(skip(self))]
-    pub async fn update_list(&mut self) -> Result<(), Report> {
-        if !self.refresh_timer.do_check() {
-            return Ok(());
-        }
-        info!("Passed timer, refreshing");
-        let _st = ScopedTimer::new("Updating List");
-
-        let result_rsp = self
-            .client
-            .get(format!("http://109.74.205.63:12345/games/{}", self.id))
-            .send()
-            .await;
-
-        let list = match result_rsp {
-            Ok(rsp) => {
-                // let jpl = rsp.error_for_status()?.json::<JSONPieceList>().await?;
-                let rsp = rsp.error_for_status()?;
-                self.reqwest_error_at_last_refresh = false;
-
-                if rsp.status() == StatusCode::ALREADY_REPORTED {
-                    UpdateAction::UseExisting(None)
-                } else {
-                    UpdateAction::NewList(rsp.json::<JSONPieceList>().await?.into_game_list()?)
+    #[allow(irrefutable_let_patterns)]
+    pub fn update_list(&mut self) -> Result<(), SendError<MessageToWorker>> {
+        match self.refresher.try_recv() {
+            Ok(msg) => {
+                if let MessageToGame::Response(rsp) = msg {
+                    match rsp {
+                        Ok(response) => {
+                            info!(update=?response.text(), "Update from server on moving");
+                            self.ex_last_pressed = None;
+                        }
+                        Err(e) => {
+                            if let Some(sc) = e.status() {
+                                if sc == StatusCode::PRECONDITION_FAILED {
+                                    error!("Invalid move");
+                                    self.last_pressed = self.ex_last_pressed;
+                                } else {
+                                    error!(%e, %sc, "Error in input response");
+                                }
+                            } else {
+                                error!(%e, "Error in input response");
+                            }
+                        }
+                    }
                 }
             }
             Err(e) => {
-                if self.reqwest_error_at_last_refresh {
-                    UpdateAction::UseExisting(Some(e))
-                } else {
-                    self.reqwest_error_at_last_refresh = true;
-                    UpdateAction::ReqwestError(e)
+                if e != TryRecvError::Empty {
+                    error!(%e, "Try recv error from worker");
                 }
             }
-        }; //moved away to fix await errors with holding the lock
-
-        match self.cached_pieces.write() {
-            Ok(mut lock) => match list {
-                UpdateAction::NewList(nl) => {
-                    *lock = nl;
-                    Ok(())
-                }
-                UpdateAction::ReqwestError(e) => {
-                    *lock = JSONPieceList::no_connection_list();
-                    Err(e.into())
-                }
-                UpdateAction::UseExisting(e) => match e {
-                    Some(e) => Err(e.into()),
-                    None => Ok(()),
-                },
-            },
-            Err(e) => Err(eyre!("Unable to populate due to {e}")),
         }
+
+        self.refresher.send_msg(MessageToWorker::UpdateList)
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn restart_board(&mut self) -> Result<(), Report> {
-        let rsp = self
-            .client
-            .post("http://109.74.205.63:12345/newgame")
-            .body(self.id.to_string())
-            .send()
-            .await?
-            .error_for_status()?;
-
-        info!(update=?rsp.text().await, "Update from server on restarting");
-        Ok(())
+    pub fn restart_board(&mut self) -> Result<()> {
+        self.refresher.send_msg(MessageToWorker::RestartBoard).context("sending restart msg to board")
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn exit(self) -> Result<(), Report> {
-        let rsp = self
-            .client
-            .post("http://109.74.205.63:12345/invalidate")
-            .body(self.id.to_string())
-            .send()
-            .await?
-            .error_for_status()?;
-
-        info!(update=?rsp.text().await, "Update from server on invalidating cache: ");
-
-        Ok(())
+    pub fn exit(self) -> Result<()> {
+        self.refresher.send_msg(MessageToWorker::InvalidateKill).context("sending invalidatekill msg to board")
     }
 
     pub fn clear_mouse_input(&mut self) {

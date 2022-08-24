@@ -12,7 +12,7 @@ pub struct PistonConfig {
 }
 
 #[tracing::instrument(skip(pc), level = "debug")]
-pub async fn piston_main(pc: PistonConfig) {
+pub fn piston_main(pc: PistonConfig) {
     let mut win: PistonWindow = WindowSettings::new("Async Chess", [pc.res, pc.res])
         .exit_on_esc(true)
         .resizable(true)
@@ -26,7 +26,7 @@ pub async fn piston_main(pc: PistonConfig) {
     let mut game =
         ChessGame::new(&mut win, pc.id).unwrap_or_else(|e| panic!("Error making game: {e}"));
 
-    if let Err(e) = game.update_list().await {
+    if let Err(e) = game.update_list() {
         error!(%e, "Error on initial update");
     }
 
@@ -53,7 +53,7 @@ pub async fn piston_main(pc: PistonConfig) {
         }
 
         if let Some(_u) = e.update_args() {
-            game.update_list().await.unwrap_or_else(|err| {
+            game.update_list().unwrap_or_else(|err| {
                 error!(%err, "Unable to re-update list on update");
             });
         }
@@ -64,7 +64,7 @@ pub async fn piston_main(pc: PistonConfig) {
                     info!(?kb, "Keyboard Input");
                     if kb == Key::C {
                         //Clear
-                        game.restart_board().await.unwrap_or_else(|err| {
+                        game.restart_board().unwrap_or_else(|err| {
                             error!(%err, "Unable to restart board");
                         });
                     }
@@ -75,14 +75,13 @@ pub async fn piston_main(pc: PistonConfig) {
                     if mb == MouseButton::Right {
                         game.clear_mouse_input();
                     } else if mp_valid(mouse_pos, window_scale) {
-                        game.mouse_input(to_board_pixels(mouse_pos, window_scale), window_scale)
-                            .await;
+                        game.mouse_input(to_board_pixels(mouse_pos, window_scale), window_scale);
                     }
                 }
                 _ => {}
             }
 
-            game.update_list().await.unwrap_or_else(|err| {
+            game.update_list().unwrap_or_else(|err| {
                 error!(%err, "Unable to re-update list on input");
             });
         }
@@ -91,7 +90,7 @@ pub async fn piston_main(pc: PistonConfig) {
     }
 
     info!("Finishing and cleaning up");
-    if let Err(e) = game.exit().await {
+    if let Err(e) = game.exit() {
         error!(%e, "Unable to cleanup");
     }
 }

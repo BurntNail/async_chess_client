@@ -1,5 +1,5 @@
-use crate::{chess::ChessPiece, eyre};
-use color_eyre::Report;
+use crate::{chess::ChessPiece};
+use anyhow::{Result, Error, Context};
 use find_folder::Search::ParentsThenKids;
 use piston_window::{Filter, Flip, G2dTexture, PistonWindow, Texture, TextureSettings};
 use std::{collections::HashMap, path::PathBuf};
@@ -14,14 +14,14 @@ pub struct Cacher {
 }
 
 impl Cacher {
-    pub fn new() -> Result<Self, find_folder::Error> {
-        let path = ParentsThenKids(3, 3).for_folder("assets")?;
+    pub fn new() -> Result<Self> {
+        let path = ParentsThenKids(3, 3).for_folder("assets").context("Finding the assets folder")?;
         Ok(Self {
             path,
             assets: HashMap::new(),
         })
     }
-    pub fn new_and_populate(win: &mut PistonWindow) -> Result<Self, Report> {
+    pub fn new_and_populate(win: &mut PistonWindow) -> Result<Self> {
         let mut s = Self::new()?;
         s.populate(win)?;
         Ok(s)
@@ -31,7 +31,7 @@ impl Cacher {
         self.assets.get(p)
     }
 
-    fn insert(&mut self, p: &str, win: &mut PistonWindow) -> Result<(), Report> {
+    fn insert(&mut self, p: &str, win: &mut PistonWindow) -> Result<()> {
         let path = self.path.join(p);
         let ts = TextureSettings::new().filter(Filter::Nearest);
 
@@ -40,20 +40,18 @@ impl Cacher {
                 self.assets.insert(p.to_string(), tex);
                 Ok(())
             }
-            Err(e) => Err(eyre!("Unable to find texture: {e}")),
+            Err(e) => Err(anyhow!("Unable to find texture: {e}")),
         }
     }
 
     #[tracing::instrument(skip(self, win), fields(s_len=self.assets.len(), path=?self.path))]
-    pub fn populate(&mut self, win: &mut PistonWindow) -> Result<(), Report> {
+    pub fn populate(&mut self, win: &mut PistonWindow) -> Result<(), Error> {
         for variant in ChessPiece::all_variants() {
-            self.insert(&variant.to_file_name(), win)
-                .map_err(|e| eyre!("Unable to insert {variant:?}: {e}"))?;
+            self.insert(&variant.to_file_name(), win).with_context(|| format!("Unable to find variant {variant:?}"))?;
         }
 
         for extra in &["board_alt.png", "highlight.png", "selected.png"] {
-            self.insert(extra, win)
-                .map_err(|e| eyre!("Unable to insert {extra:?}: {e}"))?;
+            self.insert(extra, win).with_context(|| format!("Unable to find extra {extra}"))?;
         }
 
         Ok(())

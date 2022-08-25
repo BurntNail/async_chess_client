@@ -16,7 +16,6 @@ mod game;
 mod list_refresher;
 mod piston;
 mod server_interface;
-mod sync_ext;
 mod time_based_structs;
 
 #[macro_use]

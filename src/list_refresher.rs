@@ -1,7 +1,6 @@
 use crate::{
     error_ext::{ErrorExt, ToAnyhowDebug, ToAnyhowDisplay},
     server_interface::{Board, JSONMove, JSONPieceList},
-    sync_ext::RwLockExt,
     time_based_structs::{DoOnInterval, ScopedTimer},
 };
 use anyhow::{Context as _, Result};
@@ -13,7 +12,7 @@ use reqwest::{
 use std::{
     sync::{
         mpsc::{channel, Receiver, SendError, Sender, TryRecvError},
-        Arc, Mutex, RwLock,
+        Mutex
     },
     thread::JoinHandle,
     time::{Duration},
@@ -33,7 +32,15 @@ pub enum MessageToWorker {
 
 #[derive(Debug)]
 pub enum MessageToGame {
-    Response(Result<Response, RError>),
+    UpdateBoard(BoardMessage)
+}
+
+#[derive(Debug)]
+pub enum BoardMessage {
+    TmpMove(Result<Response, RError>, JSONMove),
+    UseExisting,
+    NoConnectionList,
+    NewList(Board)
 }
 
 pub struct ListRefresher {
@@ -42,17 +49,10 @@ pub struct ListRefresher {
     rx: Receiver<MessageToGame>,
 }
 
-enum UpdateAction {
-    NewList(Board),
-    ReqwestError(reqwest::Error),
-    UseExisting(Option<reqwest::Error>),
-}
-
 fn run_loop(
     mtw_rx: Receiver<MessageToWorker>,
     mtg_tx: Sender<MessageToGame>,
     id: u32,
-    cached_pieces: Arc<RwLock<Board>>,
 ) -> Result<()> {
     let inflight = Mutex::new(());
     let client = ClientBuilder::default()
@@ -90,46 +90,30 @@ fn run_loop(
                     .get(format!("http://109.74.205.63:12345/games/{}", id))
                     .send();
 
-                let list = match result_rsp {
+                let msg = match result_rsp {
                     Ok(rsp) => {
                         let rsp = rsp.error_for_status()?;
                         reqwest_error_at_last_refresh = false;
 
                         if rsp.status() == StatusCode::ALREADY_REPORTED {
-                            UpdateAction::UseExisting(None)
+                            BoardMessage::UseExisting
                         } else {
-                            UpdateAction::NewList(rsp.json::<JSONPieceList>()?.into_game_list()?)
+                            BoardMessage::NewList(rsp.json::<JSONPieceList>()?.into_game_list()?)
                         }
                     }
                     Err(e) => {
                         if reqwest_error_at_last_refresh {
-                            UpdateAction::UseExisting(Some(e))
+                            warn!(%e, "Using existing list due to errors");
+                            BoardMessage::UseExisting
                         } else {
                             reqwest_error_at_last_refresh = true;
-                            UpdateAction::ReqwestError(e)
+                            error!(%e, "Error refreshing list - sending NCL");
+                            BoardMessage::NoConnectionList
                         }
                     }
                 };
 
-                match cached_pieces.write() {
-                    Ok(mut lock) => match list {
-                        UpdateAction::NewList(nl) => {
-                            *lock = nl;
-                        }
-                        UpdateAction::ReqwestError(e) => {
-                            *lock = JSONPieceList::no_connection_list();
-                            error!(%e, "Error for reqwest");
-                        }
-                        UpdateAction::UseExisting(e) => {
-                            if let Some(e) = e {
-                                warn!(%e, "Using existing list");
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        bail!("Unable to populate due to posion error: {e}");
-                    }
-                }
+                mtg_tx.send(MessageToGame::UpdateBoard(msg)).context("sending update list msg").error();
             }
             MessageToWorker::RestartBoard => {
                 match client
@@ -150,13 +134,8 @@ fn run_loop(
                     .json(&m)
                     .send();
 
-                if let Ok(mut lock) = cached_pieces.write_timeout(Duration::from_millis(50)) {
-                    lock[(m.ny * 8 + m.nx) as usize] = lock[(m.y * 8 + m.x) as usize];
-                    lock[(m.y * 8 + m.x) as usize] = None;
-                }
-
                 mtg_tx
-                    .send(MessageToGame::Response(rsp))
+                    .send(MessageToGame::UpdateBoard(BoardMessage::TmpMove(rsp, m)))
                     .context("sending msg to game re moving piece")
                     .warn();
             }
@@ -185,12 +164,12 @@ fn run_loop(
 }
 
 impl ListRefresher {
-    pub fn new(cached_pieces: Arc<RwLock<Board>>, id: u32) -> Self {
+    pub fn new(id: u32) -> Self {
         let (mtw_tx, mtw_rx) = channel();
         let (mtg_tx, mtg_rx) = channel();
 
         let thread = std::thread::spawn(move || {
-            run_loop(mtw_rx, mtg_tx, id, cached_pieces)
+            run_loop(mtw_rx, mtg_tx, id)
                 .context("error running refresh loop")
                 .error();
         });

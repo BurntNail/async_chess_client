@@ -1,8 +1,8 @@
 use crate::{
     cacher::{Cacher, TILE_S},
-    list_refresher::{ListRefresher, MessageToGame, MessageToWorker},
+    list_refresher::{ListRefresher, MessageToGame, MessageToWorker, BoardMessage},
     piston::{mp_valid, to_board_pixels},
-    server_interface::{Board, JSONMove},
+    server_interface::{Board, JSONMove, no_connection_list},
 };
 use anyhow::{Context as _, Result};
 use graphics::DrawState;
@@ -10,25 +10,23 @@ use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow,
 use reqwest::StatusCode;
 use std::sync::{
     mpsc::{SendError, TryRecvError},
-    Arc, RwLock,
 };
 
 pub struct ChessGame {
     id: u32,
     c: Cacher,
-    cached_pieces: Arc<RwLock<Board>>,
+    board: Board,
     last_pressed: Option<(u32, u32)>,
     ex_last_pressed: Option<(u32, u32)>,
     refresher: ListRefresher,
 }
 impl ChessGame {
     pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self> {
-        let cps = Arc::new(RwLock::new(vec![None; 64]));
         Ok(Self {
             id,
             c: Cacher::new_and_populate(win).context("making cacher and populating it")?,
-            cached_pieces: cps.clone(),
-            refresher: ListRefresher::new(cps, id),
+            board: vec![None; 8 * 8],
+            refresher: ListRefresher::new(id),
             last_pressed: None,
             ex_last_pressed: None,
         })
@@ -80,16 +78,13 @@ impl ChessGame {
                 );
             }
         }
-
-        match self.cached_pieces.read() {
-            Ok(lock) => {
                 let mut errs = vec![];
 
                 for col in 0..8_u32 {
                     for row in 0..8_u32 {
                         let idx = row * 8 + col;
 
-                        if let Some(piece) = lock[idx as usize] {
+                        if let Some(piece) = self.board[idx as usize] {
                             match self.c.get(&piece.to_file_name()) {
                                 None => {
                                     errs.push(anyhow!(
@@ -129,7 +124,7 @@ impl ChessGame {
                 {
                     let (raw_x, raw_y) = raw_mouse_coords;
                     if let Some((lp_x, lp_y)) = self.last_pressed {
-                        if let Some(piece) = lock[(lp_y * 8 + lp_x) as usize] {
+                        if let Some(piece) = self.board[(lp_y * 8 + lp_x) as usize] {
                             if let Some(tex) = self.c.get(&piece.to_file_name()) {
                                 let s = TILE_S * window_scale / 1.5;
                                 let image =
@@ -150,11 +145,6 @@ impl ChessGame {
                 if !errs.is_empty() {
                     bail!("{errs:?}");
                 }
-            }
-            Err(e) => {
-                bail!("Unable to read vec: {e}");
-            }
-        }
 
         Ok(())
     }
@@ -166,14 +156,9 @@ impl ChessGame {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
                 let lp_y = to_board_coord(mouse_pos.1, mult);
 
-                match self.cached_pieces.read() {
-                    Ok(lock) => {
-                        if matches!(lock.get(lp_y as usize * 8 + lp_x as usize), Some(Some(_))) {
+                        if matches!(self.board.get(lp_y as usize * 8 + lp_x as usize), Some(Some(_))) {
                             self.last_pressed = Some((lp_x, lp_y));
                         }
-                    }
-                    Err(err) => error!(%err, "Unable to read cached pieces"),
-                }
             }
             Some(lp) => {
                 //Deal with second press
@@ -207,27 +192,35 @@ impl ChessGame {
     #[allow(irrefutable_let_patterns)]
     pub fn update_list(&mut self, ignore_timer: bool) -> Result<(), SendError<MessageToWorker>> {
         match self.refresher.try_recv() {
-            Ok(msg) => {
-                if let MessageToGame::Response(rsp) = msg {
-                    match rsp {
-                        Ok(response) => {
-                            info!(update=?response.text(), "Update from server on moving");
-                            self.ex_last_pressed = None;
-                        }
-                        Err(e) => {
-                            if let Some(sc) = e.status() {
-                                if sc == StatusCode::PRECONDITION_FAILED {
-                                    error!("Invalid move");
-                                    self.last_pressed = self.ex_last_pressed;
+            Ok(msg) => match msg {
+                MessageToGame::UpdateBoard(msg) => match msg {
+                    BoardMessage::TmpMove(rsp, m) => {
+                        match rsp {
+                            Ok(response) => {
+                                info!(update=?response.text(), "Update from server on moving");
+                                self.ex_last_pressed = None;
+
+                                self.board[(m.ny * 8 + m.nx) as usize] = self.board[(m.y * 8 + m.x) as usize];
+                                self.board[(m.y * 8 + m.x) as usize] = None;
+                            }
+                            Err(e) => {
+                                if let Some(sc) = e.status() {
+                                    if sc == StatusCode::PRECONDITION_FAILED {
+                                        error!("Invalid move");
+                                        self.last_pressed = self.ex_last_pressed;
+                                    } else {
+                                        error!(%e, %sc, "Error in input response status code");
+                                    }
                                 } else {
-                                    error!(%e, %sc, "Error in input response");
+                                    error!(%e, "Error in input response");
                                 }
-                            } else {
-                                error!(%e, "Error in input response");
                             }
                         }
-                    }
-                }
+                    },
+                    BoardMessage::NoConnectionList => self.board = no_connection_list(),
+                    BoardMessage::NewList(l) => self.board = l,
+                    BoardMessage::UseExisting => {}
+                },
             }
             Err(e) => {
                 if e != TryRecvError::Empty {

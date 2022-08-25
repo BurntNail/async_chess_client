@@ -47,57 +47,58 @@ impl JSONPieceList {
 
         Ok(v)
     }
-
-    pub fn no_connection_list() -> Board {
-        let p = |x, y| JSONPiece {
-            x,
-            y,
-            is_white: (x + y) % 2 == 1, //why not
-            kind: "rook".into(),
-        };
-        let list = vec![
-            p(0, 0),
-            p(2, 0),
-            p(5, 0),
-            p(7, 0),
-            p(0, 1),
-            p(2, 1),
-            p(5, 1),
-            p(6, 1),
-            p(7, 1),
-            p(0, 2),
-            p(1, 2),
-            p(2, 2),
-            p(5, 2),
-            p(7, 2),
-            p(0, 5),
-            p(1, 5),
-            p(2, 5),
-            p(5, 5),
-            p(7, 5),
-            p(0, 6),
-            p(2, 6),
-            p(5, 6),
-            p(6, 6),
-            p(7, 6),
-            p(0, 7),
-            p(1, 7),
-            p(2, 7),
-            p(5, 7),
-            p(7, 7),
-        ];
-
-        //TODO: Change this to read from JSON in data dir
-        //TODO: Make a JSON Chess Editor
-
-        JSONPieceList(list)
-            .into_game_list()
-            .context("turning uh oh to an actual list")
-            .unwrap_log_error()
-    }
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+pub fn no_connection_list() -> Board {
+    let p = |x, y| JSONPiece {
+        x,
+        y,
+        is_white: (x + y) % 2 == 1, //why not
+        kind: "rook".into(),
+    };
+    let list = vec![
+        p(0, 0),
+        p(2, 0),
+        p(5, 0),
+        p(7, 0),
+        p(0, 1),
+        p(2, 1),
+        p(5, 1),
+        p(6, 1),
+        p(7, 1),
+        p(0, 2),
+        p(1, 2),
+        p(2, 2),
+        p(5, 2),
+        p(7, 2),
+        p(0, 5),
+        p(1, 5),
+        p(2, 5),
+        p(5, 5),
+        p(7, 5),
+        p(0, 6),
+        p(2, 6),
+        p(5, 6),
+        p(6, 6),
+        p(7, 6),
+        p(0, 7),
+        p(1, 7),
+        p(2, 7),
+        p(5, 7),
+        p(7, 7),
+    ];
+
+    //TODO: Change this to read from JSON in data dir
+    //TODO: Make a JSON Chess Editor
+
+    JSONPieceList(list)
+        .into_game_list()
+        .context("turning uh oh to an actual list")
+        .unwrap_log_error()
+}
+
+
+#[derive(Serialize, Debug, PartialEq, Eq, Clone, Copy)]
 pub struct JSONMove {
     pub id: u32,
     pub x: u32,

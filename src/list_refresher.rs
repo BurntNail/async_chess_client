@@ -1,14 +1,14 @@
 use crate::{
     error_ext::{ErrorExt, ToAnyhowDebug, ToAnyhowDisplay},
     server_interface::{Board, JSONMove, JSONPieceList},
-    time_based_structs::{DoOnInterval, MemoryTimedCacher, ScopedToListTimer},
+    time_based_structs::{DoOnInterval, MemoryTimedCacher, ThreadSafeScopedToListTimer},
 };
 use anyhow::{Context as _, Result};
 use reqwest::{blocking::ClientBuilder, StatusCode};
 use std::{
     sync::{
         mpsc::{channel, Receiver, SendError, Sender, TryRecvError},
-        Mutex,
+        Mutex, Arc, atomic::{AtomicBool, Ordering},
     },
     thread::JoinHandle,
     time::Duration,
@@ -58,30 +58,41 @@ fn run_loop(
     mtg_tx: Sender<MessageToGame>,
     id: u32,
 ) -> Result<()> {
-    let inflight = Mutex::new(());
+    let inflight = Arc::new(Mutex::new(()));
     let client = ClientBuilder::default()
         .user_agent("JackyBoi/AsyncChess")
         .build()
         .context("building client")
         .unwrap_log_error();
+    let mut handles: Vec<JoinHandle<Result<()>>> = vec![]; //technically could be an option but easier for it to be a vec
 
     let mut refresh_timer = DoOnInterval::new(Duration::from_millis(500));
-    let mut reqwest_error_at_last_refresh = false;
+    let reqwest_error_at_last_refresh = Arc::new(AtomicBool::new(false));
 
-    let mut request_timer = MemoryTimedCacher::<_, 150>::new(None);
+    let request_timer = Arc::new(Mutex::new(MemoryTimedCacher::<_, 150>::new(None)));
     let mut request_print_timer = DoOnInterval::new(Duration::from_millis(2500));
 
     while let Ok(msg) = mtw_rx.recv() {
-        let _lock = inflight
-            .lock()
-            .to_ae_display()
-            .context("locking inflight mutex")?;
-
+        {
+            let rt = request_timer.clone();
+            let lock = rt.lock().to_ae_display().context("unlocking mtc mutex").unwrap_log_error();
+            if let Some(_doiu) = request_print_timer.can_do() {
+                let avg_ttr = lock.average_u32();
+                info!(?avg_ttr, "Average time for response");
+            }
+        }
 
         {
-            if let Some(_doiu) = request_print_timer.can_do() {
-                let avg_ttr = request_timer.average_u32();
-                info!(?avg_ttr, "Average time for response");
+            let mut finished_indicies = vec![];
+            for (index, handle) in handles.iter().enumerate() {
+                if handle.is_finished() {
+                    finished_indicies.push(index - finished_indicies.len()); //to account for removing indicies and making the vec smaller
+                }
+            }
+
+            for index in finished_indicies {
+                let handle = handles.remove(index);
+                let _ = handle.join().to_ae_debug().context("joining handle")?;
             }
         }
 
@@ -100,16 +111,23 @@ fn run_loop(
                     }
                 };
 
-                let _st = ScopedToListTimer::new(&mut request_timer);
+                let (inflight, reqwest_error_at_last_refresh, mtg_tx, client, request_timer)  = (inflight.clone(), reqwest_error_at_last_refresh.clone(), mtg_tx.clone(), client.clone(), request_timer.clone());
+                handles.push(std::thread::spawn(move || {
+                    let _lock = inflight
+                        .lock()
+                        .to_ae_display()
+                        .context("locking inflight mutex").unwrap_log_error();
 
-                let result_rsp = client
+                    let _st = ThreadSafeScopedToListTimer::new(request_timer);
+
+                    let result_rsp = client
                     .get(format!("http://109.74.205.63:12345/games/{}", id))
                     .send();
 
                 let msg = match result_rsp {
                     Ok(rsp) => {
                         let rsp = rsp.error_for_status()?;
-                        reqwest_error_at_last_refresh = false;
+                        reqwest_error_at_last_refresh.store(false, Ordering::SeqCst);
 
                         if rsp.status() == StatusCode::ALREADY_REPORTED {
                             BoardMessage::UseExisting
@@ -120,11 +138,11 @@ fn run_loop(
                         }
                     }
                     Err(e) => {
-                        if reqwest_error_at_last_refresh {
+                        if reqwest_error_at_last_refresh.load(Ordering::SeqCst) {
                             warn!(%e, "Using existing list due to errors");
                             BoardMessage::UseExisting
                         } else {
-                            reqwest_error_at_last_refresh = true;
+                            reqwest_error_at_last_refresh.store(true, Ordering::SeqCst);
                             error!(%e, "Error refreshing list - sending NCL");
                             BoardMessage::NoConnectionList
                         }
@@ -135,9 +153,17 @@ fn run_loop(
                     .send(MessageToGame::UpdateBoard(msg))
                     .context("sending update list msg")
                     .error();
+
+                    Ok(())
+                }));
             }
             MessageToWorker::RestartBoard => {
-                match client
+                let (client, rt) = (client.clone(), request_timer.clone());
+                //not added to the handles list because I don't care about the results
+                std::thread::spawn(move || {
+                    let _st = ThreadSafeScopedToListTimer::new(rt);
+
+                    match client
                     .post("http://109.74.205.63:12345/newgame")
                     .body(id.to_string())
                     .send()
@@ -148,9 +174,14 @@ fn run_loop(
                     },
                     Err(e) => error!(%e, "Error restarting"),
                 }
+                });
             }
             MessageToWorker::MakeMove(m) => {
-                mtg_tx
+                let (mtg_tx, client, rt) = (mtg_tx.clone(), client.clone(), request_timer.clone());
+                handles.push(std::thread::spawn(move || {
+                    let _st = ThreadSafeScopedToListTimer::new(rt);
+
+                    mtg_tx
                     .send(MessageToGame::UpdateBoard(BoardMessage::TmpMove(m)))
                     .context("sending msg to game re moving piece temp")
                     .warn();
@@ -190,9 +221,15 @@ fn run_loop(
                     .send(MessageToGame::UpdateBoard(BoardMessage::Move(outcome, m)))
                     .context("piece move result")
                     .warn();
+
+                Ok(())
+                }));
             }
             MessageToWorker::InvalidateKill => {
-                info!("InvalidateKill msg sent");
+                let (client, rt) = (client.clone(), request_timer.clone());
+                std::thread::spawn(move || {
+                    info!("InvalidateKill msg sent");
+                    let _st = ThreadSafeScopedToListTimer::new(rt);
 
                 match client
                     .post("http://109.74.205.63:12345/invalidate")
@@ -207,6 +244,7 @@ fn run_loop(
                 }
 
                 info!("Ending refresher");
+                });
                 break;
             }
         }

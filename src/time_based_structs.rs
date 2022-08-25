@@ -1,8 +1,12 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::{Arc, Mutex}};
 use std::{
     ops::{AddAssign, Div},
     time::{Duration, Instant},
 };
+
+use anyhow::Context;
+
+use crate::error_ext::{ErrorExt, ToAnyhow};
 
 #[derive(Debug)]
 pub struct MemoryTimedCacher<T, const N: usize> {
@@ -174,6 +178,7 @@ impl Drop for ScopedTimer {
 pub struct ScopedToListTimer<'a, const N: usize>(&'a mut MemoryTimedCacher<Duration, N>, Instant);
 
 impl<'a, const N: usize> ScopedToListTimer<'a, N> {
+    #[allow(dead_code)]
     pub fn new(t: &'a mut MemoryTimedCacher<Duration, N>) -> Self {
         Self(t, Instant::now())
     }
@@ -182,6 +187,22 @@ impl<'a, const N: usize> ScopedToListTimer<'a, N> {
 impl<'a, const N: usize> Drop for ScopedToListTimer<'a, N> {
     fn drop(&mut self) {
         self.0.add(self.1.elapsed());
+    }
+}
+
+pub struct ThreadSafeScopedToListTimer<const N: usize>(Arc<Mutex<MemoryTimedCacher<Duration, N>>>, Instant);
+
+impl<const N: usize> ThreadSafeScopedToListTimer<N> {
+    pub fn new(t: Arc<Mutex<MemoryTimedCacher<Duration, N>>>) -> Self {
+        Self(t, Instant::now())
+    }
+}
+
+impl<const N: usize> Drop for ThreadSafeScopedToListTimer<N> {
+    fn drop(&mut self) {
+        let elapsed = self.1.elapsed();
+        let mut lock = self.0.lock().to_ae_display().context("locking memtimercache for timer").unwrap_log_error();
+        lock.add(elapsed);
     }
 }
 

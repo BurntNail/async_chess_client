@@ -193,7 +193,6 @@ impl ChessGame {
             Ok(msg) => match msg {
                 MessageToGame::UpdateBoard(msg) => match msg {
                     BoardMessage::TmpMove(m) => {
-                        info!(l=%self.board.len());
                         self.board[64] = self.board[(m.ny * 8 + m.nx) as usize];
                         self.board[(m.ny * 8 + m.nx) as usize] =
                             std::mem::take(&mut self.board[(m.y * 8 + m.x) as usize]);

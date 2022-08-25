@@ -23,7 +23,7 @@ impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
     }
 }
 
-impl<T: Clone + Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
+impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
     pub fn new(t: Option<DoOnInterval>) -> Self {
         Self {
             data: [None; N],
@@ -61,7 +61,7 @@ impl<T: Clone + Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
 
         self.data[0..end_index]
             .iter()
-            .cloned()
+            .copied()
             .map(|opt| opt.expect("LOGIC ERROR IN TBS"))
             .collect()
     }

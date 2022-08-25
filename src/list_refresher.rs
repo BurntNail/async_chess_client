@@ -81,7 +81,7 @@ fn run_loop(
         {
             if let Some(_doiu) = request_print_timer.can_do() {
                 let avg_ttr = request_timer.average_u32();
-                info!(?avg_ttr, "Average time for response")
+                info!(?avg_ttr, "Average time for response");
             }
         }
 

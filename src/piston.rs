@@ -1,4 +1,10 @@
-use crate::{cacher::BOARD_S, game::ChessGame, time_based_structs::MemoryTimedCacher};
+use crate::{
+    cacher::BOARD_S,
+    error_ext::{ErrorExt, ToAnyhow},
+    game::ChessGame,
+    time_based_structs::MemoryTimedCacher,
+};
+use anyhow::Context;
 use piston_window::{
     Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent, UpdateEvent,
     Window, WindowSettings,
@@ -17,18 +23,19 @@ pub fn piston_main(pc: PistonConfig) {
         .exit_on_esc(true)
         .resizable(true)
         .build()
-        .unwrap_or_else(|e| {
-            error!(%e, "Error making window");
-            std::process::exit(1);
-        });
+        .to_ae_display()
+        .context("making window")
+        .unwrap_log_error();
     // win.set_ups(5);
 
-    let mut game =
-        ChessGame::new(&mut win, pc.id).unwrap_or_else(|e| panic!("Error making game: {e}"));
+    let mut game = ChessGame::new(&mut win, pc.id)
+        .context("new chess game")
+        .unwrap_log_error();
 
-    if let Err(e) = game.update_list() {
-        error!(%e, "Error on initial update");
-    }
+    game.update_list(true)
+        .to_ae_display()
+        .context("initial update")
+        .error();
 
     let mut mouse_pos = (0.0, 0.0);
     let mut time_since_last_frame = 0.0;
@@ -46,27 +53,28 @@ pub fn piston_main(pc: PistonConfig) {
 
             win.draw_2d(&e, |c, g, _device| {
                 game.render(c, g, mouse_pos, window_scale)
-                    .unwrap_or_else(|e| {
-                        error!(%e, "Error rendering");
-                    });
+                    .context("rendering")
+                    .error();
             });
         }
 
         if let Some(_u) = e.update_args() {
-            game.update_list().unwrap_or_else(|err| {
-                error!(%err, "Unable to re-update list on update");
-            });
+            game.update_list(false)
+                .to_ae_display()
+                .context("on update args")
+                .error();
         }
 
         if let Some(pa) = e.press_args() {
+            let mut update_now = false;
+
             match pa {
                 Button::Keyboard(kb) => {
                     info!(?kb, "Keyboard Input");
                     if kb == Key::C {
                         //Clear
-                        game.restart_board().unwrap_or_else(|err| {
-                            error!(%err, "Unable to restart board");
-                        });
+                        game.restart_board().context("restart on c key").error();
+                        update_now = true;
                     }
                 }
                 Button::Mouse(mb) => {
@@ -76,23 +84,23 @@ pub fn piston_main(pc: PistonConfig) {
                         game.clear_mouse_input();
                     } else if mp_valid(mouse_pos, window_scale) {
                         game.mouse_input(to_board_pixels(mouse_pos, window_scale), window_scale);
+                        update_now = true;
                     }
                 }
                 _ => {}
             }
 
-            game.update_list().unwrap_or_else(|err| {
-                error!(%err, "Unable to re-update list on input");
-            });
+            game.update_list(update_now)
+                .to_ae_display()
+                .with_context(|| format!("update on input update_now: {update_now}"))
+                .error();
         }
 
         e.mouse_cursor(|p| mouse_pos = (p[0], p[1]));
     }
 
     info!("Finishing and cleaning up");
-    if let Err(e) = game.exit() {
-        error!(%e, "Unable to cleanup");
-    }
+    game.exit().context("clearing up").error();
 }
 
 ///Must always be called BEFORE [`to_board_pixels`]

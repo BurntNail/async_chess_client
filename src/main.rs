@@ -11,12 +11,13 @@
 mod cacher;
 mod chess;
 mod egui_launcher;
+mod error_ext;
 mod game;
 mod list_refresher;
 mod piston;
 mod server_interface;
+mod sync_ext;
 mod time_based_structs;
-mod error_ext;
 
 #[macro_use]
 extern crate tracing;
@@ -24,7 +25,9 @@ extern crate tracing;
 #[macro_use]
 extern crate anyhow;
 
-use anyhow::{Error, Context};
+use crate::error_ext::ErrorExt;
+use anyhow::Result;
+use anyhow::{Context, Error};
 use directories::ProjectDirs;
 use egui_launcher::egui_main;
 use error_ext::ToAnyhow;
@@ -34,8 +37,6 @@ use std::env::{args, set_var, var};
 use std::fs::read_to_string;
 use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 use tracing_tree::HierarchicalLayer;
-use anyhow::Result;
-use crate::error_ext::ErrorExt;
 
 fn main() {
     setup_logging_tracing().eprint_exit();
@@ -63,7 +64,7 @@ fn setup_logging_tracing() -> Result<(), Error> {
                 .with_verbose_entry(true)
                 .with_ansi(true), // .with_filter(Level::INFO.into())
         )
-        .try_init()?;    
+        .try_init()?;
 
     Ok(())
 }
@@ -100,7 +101,11 @@ fn start() {
 #[tracing::instrument]
 fn read_config() -> Result<PistonConfig> {
     let conf_path = ProjectDirs::from("com", "jackmaguire", "async_chess")
-        .to_ae_display().context("finding project dirs")?.config_dir().join("config.json");
-    let cntnts = read_to_string(&conf_path).with_context(|| format!("reading path {conf_path:?}"))?;
+        .to_ae_display()
+        .context("finding project dirs")?
+        .config_dir()
+        .join("config.json");
+    let cntnts =
+        read_to_string(&conf_path).with_context(|| format!("reading path {conf_path:?}"))?;
     from_str::<PistonConfig>(&cntnts).with_context(|| format!("reading contents {cntnts}"))
 }

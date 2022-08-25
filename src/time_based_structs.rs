@@ -21,7 +21,8 @@ impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
 
 impl<T: Clone + std::fmt::Debug, const N: usize> MemoryTimedCacher<T, N> {
     pub fn add(&mut self, t: T) {
-        if self.timer.do_check() || self.data[0].is_none() {
+        let doiu = self.timer.can_do();
+        if doiu.is_some() || self.data[0].is_none() {
             self.data[self.index] = Some(t);
             self.index = (self.index + 1) % N;
         }
@@ -67,6 +68,7 @@ impl<T: Into<f64> + Clone + std::fmt::Debug, const N: usize> MemoryTimedCacher<T
 pub struct DoOnInterval {
     last_did: Instant,
     gap: Duration,
+    updater_exists: bool,
 }
 
 impl DoOnInterval {
@@ -74,17 +76,25 @@ impl DoOnInterval {
         Self {
             last_did: Instant::now() - Duration::from_secs(1),
             gap,
+            updater_exists: false,
         }
     }
 
-    pub fn do_check(&mut self) -> bool {
-        if self.last_did.elapsed() > self.gap {
-            self.last_did = Instant::now();
-
-            true
+    pub fn can_do(&mut self) -> Option<DOIUpdate> {
+        if !self.updater_exists && self.last_did.elapsed() > self.gap {
+            self.updater_exists = true;
+            Some(DOIUpdate(self))
         } else {
-            false
+            None
         }
+    }
+}
+
+pub struct DOIUpdate<'a>(&'a mut DoOnInterval);
+impl Drop for DOIUpdate<'_> {
+    fn drop(&mut self) {
+        self.0.last_did = Instant::now();
+        self.0.updater_exists = false;
     }
 }
 

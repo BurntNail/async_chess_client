@@ -1,10 +1,8 @@
-use crate::{
-    chess::{ChessPiece, ChessPieceKind},
-};
-use anyhow::{Context, Error};
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use crate::chess::{ChessPiece, ChessPieceKind};
 use crate::error_ext::ErrorExt;
+use anyhow::Result;
+use anyhow::{Context, Error};
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug, Default)]
 pub struct JSONPieceList(pub Vec<JSONPiece>);
@@ -95,11 +93,11 @@ impl JSONPieceList {
         JSONPieceList(list)
             .into_game_list()
             .context("turning uh oh to an actual list")
-            .unwrap_log()
+            .unwrap_log_error()
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, PartialEq, Eq)]
 pub struct JSONMove {
     pub id: u32,
     pub x: u32,

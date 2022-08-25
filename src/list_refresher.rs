@@ -1,7 +1,10 @@
 use crate::{
+    error_ext::{ErrorExt, ToAnyhowDebug, ToAnyhowDisplay},
     server_interface::{Board, JSONMove, JSONPieceList},
-    time_based_structs::{DoOnInterval, ScopedTimer}, error_ext::{ErrorExt, ToAnyhowDisplay, ToAnyhowDebug},
+    sync_ext::RwLockExt,
+    time_based_structs::{DoOnInterval, ScopedTimer},
 };
+use anyhow::{Context as _, Result};
 use reqwest::Error as RError;
 use reqwest::{
     blocking::{ClientBuilder, Response},
@@ -13,16 +16,16 @@ use std::{
         Arc, Mutex, RwLock,
     },
     thread::JoinHandle,
-    time::{Duration, Instant},
+    time::{Duration},
 };
-use anyhow::{Result, Context as _};
 
 //TODO: More flexible calling API - eg. give an endpoint and an either
 //TODO: Local move, until server refresh for movepiece
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum MessageToWorker {
     UpdateList,
+    UpdateNOW,
     RestartBoard,
     InvalidateKill,
     MakeMove(JSONMove),
@@ -56,20 +59,31 @@ fn run_loop(
         .user_agent("JackyBoi/AsyncChess")
         .build()
         .context("building client")
-        .unwrap_log();
+        .unwrap_log_error();
 
-    let mut refresh_timer = DoOnInterval::new(Duration::from_millis(250));
+    let mut refresh_timer = DoOnInterval::new(Duration::from_millis(500));
     let mut reqwest_error_at_last_refresh = false;
 
     while let Ok(msg) = mtw_rx.recv() {
-        let _lock = inflight.lock().to_ae_display().context("locking inflight mutex")?;
+        let _lock = inflight
+            .lock()
+            .to_ae_display()
+            .context("locking inflight mutex")?;
 
         match msg {
-            MessageToWorker::UpdateList => {
-                if !refresh_timer.do_check() {
-                    continue;
-                }
-                info!("Passed timer, refreshing");
+            MessageToWorker::UpdateList | MessageToWorker::UpdateNOW => {
+                let _doiu = {
+                    if msg == MessageToWorker::UpdateNOW {
+                        continue;
+                    }
+                    let doiu = refresh_timer.can_do();
+                    if let Some(doiu) = doiu {
+                        doiu
+                    } else {
+                        continue;
+                    }
+                };
+
                 let _st = ScopedTimer::new("Updating List");
 
                 let result_rsp = client
@@ -106,8 +120,10 @@ fn run_loop(
                             *lock = JSONPieceList::no_connection_list();
                             error!(%e, "Error for reqwest");
                         }
-                        UpdateAction::UseExisting(e) => if let Some(e) = e {
-                            warn!(%e, "Using existing list");
+                        UpdateAction::UseExisting(e) => {
+                            if let Some(e) = e {
+                                warn!(%e, "Using existing list");
+                            }
                         }
                     },
                     Err(e) => {
@@ -134,18 +150,18 @@ fn run_loop(
                     .json(&m)
                     .send();
 
-                let now = Instant::now();
-                'timeout: while now.elapsed() < Duration::from_millis(50) {
-                    if let Ok(mut lock) = cached_pieces.try_write() {
-                        lock[(m.ny * 8 + m.nx) as usize] = lock[(m.y * 8 + m.x) as usize];
-                        break 'timeout; //probably unncessesary but v v cool
-                    }
+                if let Ok(mut lock) = cached_pieces.write_timeout(Duration::from_millis(50)) {
+                    lock[(m.ny * 8 + m.nx) as usize] = lock[(m.y * 8 + m.x) as usize];
+                    lock[(m.y * 8 + m.x) as usize] = None;
                 }
 
-                mtg_tx.send(MessageToGame::Response(rsp)).context("sending msg to game re moving piece").warn();
+                mtg_tx
+                    .send(MessageToGame::Response(rsp))
+                    .context("sending msg to game re moving piece")
+                    .warn();
             }
             MessageToWorker::InvalidateKill => {
-                info!("InvalidateKill");
+                info!("InvalidateKill msg sent");
 
                 match client
                     .post("http://109.74.205.63:12345/invalidate")
@@ -174,7 +190,9 @@ impl ListRefresher {
         let (mtg_tx, mtg_rx) = channel();
 
         let thread = std::thread::spawn(move || {
-            run_loop(mtw_rx, mtg_tx, id, cached_pieces).context("error running refresh loop").error();
+            run_loop(mtw_rx, mtg_tx, id, cached_pieces)
+                .context("error running refresh loop")
+                .error();
         });
 
         Self {
@@ -195,7 +213,10 @@ impl ListRefresher {
 impl Drop for ListRefresher {
     fn drop(&mut self) {
         if let Some(h) = std::mem::take(&mut self.handle) {
-            h.join().to_ae_debug().context("joining refresher handle").error_exit();
+            h.join()
+                .to_ae_debug()
+                .context("joining refresher handle")
+                .error_exit();
         }
     }
 }

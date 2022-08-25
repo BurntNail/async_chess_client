@@ -4,6 +4,7 @@ use crate::{
     piston::{mp_valid, to_board_pixels},
     server_interface::{Board, JSONMove},
 };
+use anyhow::{Context as _, Result};
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use reqwest::StatusCode;
@@ -11,7 +12,6 @@ use std::sync::{
     mpsc::{SendError, TryRecvError},
     Arc, RwLock,
 };
-use anyhow::{Result, Context as _};
 
 pub struct ChessGame {
     id: u32,
@@ -141,7 +141,9 @@ impl ChessGame {
                                     piece.to_file_name()
                                 ));
                             }
-                        } //because of the new thread system this can often occur - prev there was an error! here
+                        } else {
+                            warn!("no piece at last pressed");
+                        }
                     }
                 }
 
@@ -203,7 +205,7 @@ impl ChessGame {
     ///Should be called ASAP after instantiating game, and often afterwards
     // #[tracing::instrument(skip(self))]
     #[allow(irrefutable_let_patterns)]
-    pub fn update_list(&mut self) -> Result<(), SendError<MessageToWorker>> {
+    pub fn update_list(&mut self, ignore_timer: bool) -> Result<(), SendError<MessageToWorker>> {
         match self.refresher.try_recv() {
             Ok(msg) => {
                 if let MessageToGame::Response(rsp) = msg {
@@ -234,17 +236,25 @@ impl ChessGame {
             }
         }
 
-        self.refresher.send_msg(MessageToWorker::UpdateList)
+        self.refresher.send_msg(if ignore_timer {
+            MessageToWorker::UpdateNOW
+        } else {
+            MessageToWorker::UpdateList
+        })
     }
 
     #[tracing::instrument(skip(self))]
     pub fn restart_board(&mut self) -> Result<()> {
-        self.refresher.send_msg(MessageToWorker::RestartBoard).context("sending restart msg to board")
+        self.refresher
+            .send_msg(MessageToWorker::RestartBoard)
+            .context("sending restart msg to board")
     }
 
     #[tracing::instrument(skip(self))]
     pub fn exit(self) -> Result<()> {
-        self.refresher.send_msg(MessageToWorker::InvalidateKill).context("sending invalidatekill msg to board")
+        self.refresher
+            .send_msg(MessageToWorker::InvalidateKill)
+            .context("sending invalidatekill msg to board")
     }
 
     pub fn clear_mouse_input(&mut self) {

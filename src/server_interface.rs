@@ -97,7 +97,6 @@ pub fn no_connection_list() -> Board {
         .unwrap_log_error()
 }
 
-
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Copy)]
 pub struct JSONMove {
     pub id: u32,

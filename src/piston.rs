@@ -43,7 +43,7 @@ pub fn piston_main(pc: PistonConfig) {
 
     while let Some(e) = win.next() {
         let size = win.size();
-        debug!(fps=%(1.0 / time_since_last_frame), cached_fps=%(1.0 / cached_dt.average()));
+        debug!(fps=%(1.0 / time_since_last_frame), cached_fps=%(1.0 / cached_dt.average_f64()));
 
         if let Some(r) = e.render_args() {
             time_since_last_frame = r.ext_dt;

@@ -1,25 +1,20 @@
 use crate::{
     error_ext::{ErrorExt, ToAnyhowDebug, ToAnyhowDisplay},
     server_interface::{Board, JSONMove, JSONPieceList},
-    time_based_structs::{DoOnInterval, ScopedTimer},
+    time_based_structs::{DoOnInterval, MemoryTimedCacher, ScopedToListTimer},
 };
 use anyhow::{Context as _, Result};
-use reqwest::Error as RError;
-use reqwest::{
-    blocking::{ClientBuilder, Response},
-    StatusCode,
-};
+use reqwest::{blocking::ClientBuilder, StatusCode};
 use std::{
     sync::{
         mpsc::{channel, Receiver, SendError, Sender, TryRecvError},
-        Mutex
+        Mutex,
     },
     thread::JoinHandle,
-    time::{Duration},
+    time::Duration,
 };
 
 //TODO: More flexible calling API - eg. give an endpoint and an either
-//TODO: Local move, until server refresh for movepiece
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MessageToWorker {
@@ -32,15 +27,24 @@ pub enum MessageToWorker {
 
 #[derive(Debug)]
 pub enum MessageToGame {
-    UpdateBoard(BoardMessage)
+    UpdateBoard(BoardMessage),
 }
 
 #[derive(Debug)]
 pub enum BoardMessage {
-    TmpMove(Result<Response, RError>, JSONMove),
+    TmpMove(JSONMove),
+    Move(MoveOutcome, JSONMove),
     UseExisting,
     NoConnectionList,
-    NewList(Board)
+    ///Make sure to have 65 elements
+    NewList(Board),
+}
+
+#[derive(Debug)]
+pub enum MoveOutcome {
+    Worked,
+    Invalid,
+    ReqwestFailed,
 }
 
 pub struct ListRefresher {
@@ -64,14 +68,26 @@ fn run_loop(
     let mut refresh_timer = DoOnInterval::new(Duration::from_millis(500));
     let mut reqwest_error_at_last_refresh = false;
 
+    let mut request_timer = MemoryTimedCacher::<_, 150>::new(None);
+    let mut request_print_timer = DoOnInterval::new(Duration::from_millis(2500));
+
     while let Ok(msg) = mtw_rx.recv() {
         let _lock = inflight
             .lock()
             .to_ae_display()
             .context("locking inflight mutex")?;
 
+
+        {
+            if let Some(_doiu) = request_print_timer.can_do() {
+                let avg_ttr = request_timer.average_u32();
+                info!(?avg_ttr, "Average time for response")
+            }
+        }
+
         match msg {
             MessageToWorker::UpdateList | MessageToWorker::UpdateNOW => {
+
                 let _doiu = {
                     if msg == MessageToWorker::UpdateNOW {
                         continue;
@@ -84,7 +100,7 @@ fn run_loop(
                     }
                 };
 
-                let _st = ScopedTimer::new("Updating List");
+                let _st = ScopedToListTimer::new(&mut request_timer);
 
                 let result_rsp = client
                     .get(format!("http://109.74.205.63:12345/games/{}", id))
@@ -98,7 +114,9 @@ fn run_loop(
                         if rsp.status() == StatusCode::ALREADY_REPORTED {
                             BoardMessage::UseExisting
                         } else {
-                            BoardMessage::NewList(rsp.json::<JSONPieceList>()?.into_game_list()?)
+                            let mut l = rsp.json::<JSONPieceList>()?.into_game_list()?;
+                            l.push(None); //The 65th element for the spares
+                            BoardMessage::NewList(l)
                         }
                     }
                     Err(e) => {
@@ -113,7 +131,10 @@ fn run_loop(
                     }
                 };
 
-                mtg_tx.send(MessageToGame::UpdateBoard(msg)).context("sending update list msg").error();
+                mtg_tx
+                    .send(MessageToGame::UpdateBoard(msg))
+                    .context("sending update list msg")
+                    .error();
             }
             MessageToWorker::RestartBoard => {
                 match client
@@ -129,14 +150,45 @@ fn run_loop(
                 }
             }
             MessageToWorker::MakeMove(m) => {
+                mtg_tx
+                    .send(MessageToGame::UpdateBoard(BoardMessage::TmpMove(m)))
+                    .context("sending msg to game re moving piece temp")
+                    .warn();
+
                 let rsp = client
                     .post("http://109.74.205.63:12345/movepiece")
                     .json(&m)
                     .send();
 
+                let outcome = match rsp {
+                    Ok(rsp) => match rsp.error_for_status() {
+                        Ok(rsp) => {
+                            info!(update=?rsp.text(), "Update from server on moving");
+                            MoveOutcome::Worked
+                        }
+                        Err(e) => {
+                            if let Some(sc) = e.status() {
+                                if sc == StatusCode::PRECONDITION_FAILED {
+                                    error!("Invalid move");
+                                    MoveOutcome::Invalid
+                                } else {
+                                    error!(%e, %sc, "Error in input response status code");
+                                    MoveOutcome::ReqwestFailed
+                                }
+                            } else {
+                                MoveOutcome::ReqwestFailed
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        error!(%e, "Error in input response");
+                        MoveOutcome::ReqwestFailed
+                    }
+                };
+
                 mtg_tx
-                    .send(MessageToGame::UpdateBoard(BoardMessage::TmpMove(rsp, m)))
-                    .context("sending msg to game re moving piece")
+                    .send(MessageToGame::UpdateBoard(BoardMessage::Move(outcome, m)))
+                    .context("piece move result")
                     .warn();
             }
             MessageToWorker::InvalidateKill => {

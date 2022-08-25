@@ -1,16 +1,13 @@
 use crate::{
     cacher::{Cacher, TILE_S},
-    list_refresher::{ListRefresher, MessageToGame, MessageToWorker, BoardMessage},
+    list_refresher::{BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome},
     piston::{mp_valid, to_board_pixels},
-    server_interface::{Board, JSONMove, no_connection_list},
+    server_interface::{no_connection_list, Board, JSONMove},
 };
 use anyhow::{Context as _, Result};
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
-use reqwest::StatusCode;
-use std::sync::{
-    mpsc::{SendError, TryRecvError},
-};
+use std::sync::mpsc::{SendError, TryRecvError};
 
 pub struct ChessGame {
     id: u32,
@@ -25,7 +22,7 @@ impl ChessGame {
         Ok(Self {
             id,
             c: Cacher::new_and_populate(win).context("making cacher and populating it")?,
-            board: vec![None; 8 * 8],
+            board: vec![None; 65], //65 for move prediction if smth goes wrong
             refresher: ListRefresher::new(id),
             last_pressed: None,
             ex_last_pressed: None,
@@ -78,73 +75,71 @@ impl ChessGame {
                 );
             }
         }
-                let mut errs = vec![];
+        let mut errs = vec![];
 
-                for col in 0..8_u32 {
-                    for row in 0..8_u32 {
-                        let idx = row * 8 + col;
+        for col in 0..8_u32 {
+            for row in 0..8_u32 {
+                let idx = row * 8 + col;
 
-                        if let Some(piece) = self.board[idx as usize] {
-                            match self.c.get(&piece.to_file_name()) {
-                                None => {
-                                    errs.push(anyhow!(
-                                        "Cacher doesn't contain: {} at ({col}, {row})",
-                                        piece.to_file_name()
-                                    ));
-                                }
-                                Some(tex) => {
-                                    let x = f64::from(col) * (TILE_S + 2.0) * window_scale;
-                                    let y = f64::from(row) * (TILE_S + 2.0) * window_scale;
-                                    let image =
-                                        Image::new().rect(square(x, y, TILE_S * window_scale));
+                if let Some(piece) = self.board[idx as usize] {
+                    match self.c.get(&piece.to_file_name()) {
+                        None => {
+                            errs.push(anyhow!(
+                                "Cacher doesn't contain: {} at ({col}, {row})",
+                                piece.to_file_name()
+                            ));
+                        }
+                        Some(tex) => {
+                            let x = f64::from(col) * (TILE_S + 2.0) * window_scale;
+                            let y = f64::from(row) * (TILE_S + 2.0) * window_scale;
+                            let image = Image::new().rect(square(x, y, TILE_S * window_scale));
 
-                                    let mut draw =
-                                        || image.draw(tex, &DrawState::default(), trans, graphics);
+                            let mut draw =
+                                || image.draw(tex, &DrawState::default(), trans, graphics);
 
-                                    if let Some((lp_x, lp_y)) = self.last_pressed {
-                                        if lp_x == col as u32 && lp_y == row as u32 {
-                                            image.draw(
+                            if let Some((lp_x, lp_y)) = self.last_pressed {
+                                if lp_x == col as u32 && lp_y == row as u32 {
+                                    image.draw(
                                                 self.c.get("selected.png").expect("Unable to find selected.png - check your assets folder"),
                                                 &DrawState::default(),
                                                 trans,
                                                 graphics,
                                             );
-                                        } else {
-                                            draw();
-                                        }
-                                    } else {
-                                        draw();
-                                    }
+                                } else {
+                                    draw();
                                 }
-                            }
-                        }
-                    }
-                }
-
-                {
-                    let (raw_x, raw_y) = raw_mouse_coords;
-                    if let Some((lp_x, lp_y)) = self.last_pressed {
-                        if let Some(piece) = self.board[(lp_y * 8 + lp_x) as usize] {
-                            if let Some(tex) = self.c.get(&piece.to_file_name()) {
-                                let s = TILE_S * window_scale / 1.5;
-                                let image =
-                                    Image::new().rect(square(raw_x - s / 2.0, raw_y - s / 2.0, s));
-                                image.draw(tex, &DrawState::default(), t, graphics);
                             } else {
-                                errs.push(anyhow!(
-                                    "Cacher doesn't contain: {} at ({lp_x}, {lp_y} floating)",
-                                    piece.to_file_name()
-                                ));
+                                draw();
                             }
-                        } else {
-                            warn!("no piece at last pressed");
                         }
                     }
                 }
+            }
+        }
 
-                if !errs.is_empty() {
-                    bail!("{errs:?}");
+        {
+            let (raw_x, raw_y) = raw_mouse_coords;
+            if let Some((lp_x, lp_y)) = self.last_pressed {
+                if let Some(piece) = self.board[(lp_y * 8 + lp_x) as usize] {
+                    if let Some(tex) = self.c.get(&piece.to_file_name()) {
+                        let s = TILE_S * window_scale / 1.5;
+                        let image = Image::new().rect(square(raw_x - s / 2.0, raw_y - s / 2.0, s));
+                        image.draw(tex, &DrawState::default(), t, graphics);
+                    } else {
+                        errs.push(anyhow!(
+                            "Cacher doesn't contain: {} at ({lp_x}, {lp_y} floating)",
+                            piece.to_file_name()
+                        ));
+                    }
+                } else {
+                    warn!("no piece at last pressed");
                 }
+            }
+        }
+
+        if !errs.is_empty() {
+            bail!("{errs:?}");
+        }
 
         Ok(())
     }
@@ -156,9 +151,12 @@ impl ChessGame {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
                 let lp_y = to_board_coord(mouse_pos.1, mult);
 
-                        if matches!(self.board.get(lp_y as usize * 8 + lp_x as usize), Some(Some(_))) {
-                            self.last_pressed = Some((lp_x, lp_y));
-                        }
+                if matches!(
+                    self.board.get(lp_y as usize * 8 + lp_x as usize),
+                    Some(Some(_))
+                ) {
+                    self.last_pressed = Some((lp_x, lp_y));
+                }
             }
             Some(lp) => {
                 //Deal with second press
@@ -194,34 +192,29 @@ impl ChessGame {
         match self.refresher.try_recv() {
             Ok(msg) => match msg {
                 MessageToGame::UpdateBoard(msg) => match msg {
-                    BoardMessage::TmpMove(rsp, m) => {
-                        match rsp {
-                            Ok(response) => {
-                                info!(update=?response.text(), "Update from server on moving");
-                                self.ex_last_pressed = None;
+                    BoardMessage::TmpMove(m) => {
+                        info!(l=%self.board.len());
+                        self.board[64] = self.board[(m.ny * 8 + m.nx) as usize];
+                        self.board[(m.ny * 8 + m.nx) as usize] =
+                            std::mem::take(&mut self.board[(m.y * 8 + m.x) as usize]);
+                    }
+                    BoardMessage::Move(outcome, m) => match outcome {
+                        MoveOutcome::Worked => self.board[64] = None,
+                        MoveOutcome::Invalid | MoveOutcome::ReqwestFailed => {
+                            self.last_pressed = std::mem::take(&mut self.ex_last_pressed);
 
-                                self.board[(m.ny * 8 + m.nx) as usize] = self.board[(m.y * 8 + m.x) as usize];
-                                self.board[(m.y * 8 + m.x) as usize] = None;
-                            }
-                            Err(e) => {
-                                if let Some(sc) = e.status() {
-                                    if sc == StatusCode::PRECONDITION_FAILED {
-                                        error!("Invalid move");
-                                        self.last_pressed = self.ex_last_pressed;
-                                    } else {
-                                        error!(%e, %sc, "Error in input response status code");
-                                    }
-                                } else {
-                                    error!(%e, "Error in input response");
-                                }
-                            }
+                            self.board[(m.y * 8 + m.x) as usize] =
+                                self.board[(m.ny * 8 + m.nx) as usize];
+                            self.board[(m.ny * 8 + m.nx) as usize] =
+                                std::mem::take(&mut self.board[64]);
+                            info!("Resetting pieces");
                         }
                     },
                     BoardMessage::NoConnectionList => self.board = no_connection_list(),
                     BoardMessage::NewList(l) => self.board = l,
                     BoardMessage::UseExisting => {}
                 },
-            }
+            },
             Err(e) => {
                 if e != TryRecvError::Empty {
                     error!(%e, "Try recv error from worker");

@@ -1,4 +1,4 @@
-use crate::chess::ChessPiece;
+use crate::{chess::ChessPiece, time_based_structs::ScopedTimer};
 use anyhow::{Context, Error, Result};
 use find_folder::Search::ParentsThenKids;
 use piston_window::{Filter, Flip, G2dTexture, PistonWindow, Texture, TextureSettings};
@@ -48,6 +48,8 @@ impl Cacher {
 
     #[tracing::instrument(skip(self, win), fields(s_len=self.assets.len(), path=?self.path))]
     pub fn populate(&mut self, win: &mut PistonWindow) -> Result<(), Error> {
+        let _st = ScopedTimer::new("Populating");
+
         for variant in ChessPiece::all_variants() {
             self.insert(&variant.to_file_name(), win)
                 .with_context(|| format!("Unable to find variant {variant:?}"))?;

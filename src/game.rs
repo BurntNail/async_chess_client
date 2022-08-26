@@ -11,15 +11,26 @@ use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use std::sync::mpsc::TryRecvError;
 
+///Struct to hold Game of Chess
 pub struct ChessGame {
+    ///The id of the game being played
     id: u32,
+    ///The cacher of all the assets
     c: Cacher,
+    ///The Chess Board
     board: Board,
+    ///The coordinates of the piece last pressed. Used for selected sprite location.
     last_pressed: Option<Coords>,
+    ///The coordinates before - useful for rolling back invalid moves.
     ex_last_pressed: Option<Coords>,
+    ///The refresher for making server requests
     refresher: ListRefresher,
 }
 impl ChessGame {
+    ///Create a new ChessGame
+    ///
+    /// # Errors
+    /// - Can fail if the cacher incorrectly populates
     pub fn new(win: &mut PistonWindow, id: u32) -> Result<Self> {
         Ok(Self {
             id,
@@ -32,6 +43,10 @@ impl ChessGame {
     }
 
     // #[tracing::instrument(skip(self, ctx, graphics, _device))]
+    ///Renders out the ChessBoard to the screen
+    ///
+    /// # Errors
+    /// - Can fail if piece sprites aren't found in the [`Cacher`]. However, will still render all other sprites
     pub fn render(
         &mut self,
         ctx: Context,
@@ -147,8 +162,12 @@ impl ChessGame {
         Ok(())
     }
 
+    ///Handles mouse input
+    ///
+    /// # Errors
+    /// - Can fail if there is an error sending the message to the [`ListRefresher`]
     #[tracing::instrument(skip(self))]
-    pub fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) {
+    pub fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) -> Result<()> {
         match std::mem::take(&mut self.last_pressed) {
             None => {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
@@ -168,8 +187,7 @@ impl ChessGame {
 
                 info!(last_pos=?lp, new_pos=?current_press, "Starting moving");
 
-                if let Err(e) = self
-                    .refresher
+                self.refresher
                     .send_msg(MessageToWorker::MakeMove(JSONMove::new(
                         self.id,
                         lp.0,
@@ -177,15 +195,21 @@ impl ChessGame {
                         current_press.0,
                         current_press.1,
                     )))
-                {
-                    warn!(%e, "Error sending message to worker re move");
-                }
+                    .context("sending a message to the worker re moving")?;
+
                 self.ex_last_pressed = Some(lp);
             }
         }
+
+        Ok(())
     }
 
-    ///Should be called ASAP after instantiating game, and often afterwards
+    ///Updates the board using messages from the [`ListRefresher`]
+    ///
+    /// Should be called ASAP after instantiating game, and often afterwards.
+    ///
+    /// # Errors:
+    /// - Can fail if an error sending a message to the [`ListRefresher`]
     // #[tracing::instrument(skip(self))]
     #[allow(irrefutable_let_patterns)]
     pub fn update_list(&mut self, ignore_timer: bool) -> Result<()> {
@@ -223,6 +247,10 @@ impl ChessGame {
             .ae()
     }
 
+    ///Sends a message to the [`ListRefresher`] to clear the board for a new game.
+    ///
+    /// # Errors:
+    /// - If there is an error sending the message
     #[tracing::instrument(skip(self))]
     pub fn restart_board(&mut self) -> Result<()> {
         self.refresher
@@ -230,6 +258,10 @@ impl ChessGame {
             .context("sending restart msg to board")
     }
 
+    ///Sends a message to the [`ListRefresher`] to tell the server we're done
+    ///
+    /// # Errors:
+    /// - If there is an error sending the message
     #[tracing::instrument(skip(self))]
     pub fn exit(self) -> Result<()> {
         self.refresher
@@ -237,11 +269,14 @@ impl ChessGame {
             .context("sending invalidatekill msg to board")
     }
 
+    ///Clears the mouse input - means that a different piece can be selected.
     pub fn clear_mouse_input(&mut self) {
         self.last_pressed = None;
+        self.ex_last_pressed = None;
     }
 }
 
+///Converts a pixel to a board coordinate, assuming that the mouse cursor is on the board
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn to_board_coord(p: f64, mult: f64) -> u32 {
     (p / ((TILE_S + 2.0) * mult)).floor() as u32

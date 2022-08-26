@@ -1,4 +1,7 @@
-use crate::error_ext::{ErrorExt, ToAnyhowNotErr};
+use crate::{
+    board::u32_to_idx,
+    error_ext::{ErrorExt, ToAnyhowNotErr},
+};
 use crate::{
     board::{Board, Coords},
     chess::{ChessPiece, ChessPieceKind},
@@ -7,14 +10,20 @@ use anyhow::Result;
 use anyhow::{Context, Error};
 use serde::{Deserialize, Serialize};
 
+///Unit struct to hold a vector of [`JSONPiece`]s.
 #[derive(Deserialize, Debug, Default)]
 pub struct JSONPieceList(pub Vec<JSONPiece>);
 
+///A piece in JSON representation
 #[derive(Deserialize, Debug)]
 pub struct JSONPiece {
+    ///The x position
     pub x: i32,
+    ///The y position
     pub y: i32,
+    ///The kind of the piece as a String
     pub kind: String,
+    ///Whether or not the piece is white
     pub is_white: bool,
 }
 
@@ -27,13 +36,25 @@ impl TryInto<Board> for JSONPieceList {
 }
 
 impl JSONPieceList {
-    ///# Panics:
-    ///Has the ability to panic, but if the server follows specs, should be fine
+    ///Converts into a true board for the [`chess::Board`].
+    ///
+    /// # Errors:
+    /// Can return an error for any collisions or if the pieces are out of bounds
+    ///
+    /// # Panics:
+    /// Has the ability to panic, but if the server follows specs, should be fine
     #[allow(clippy::cast_sign_loss)]
     pub fn into_game_list(self) -> Result<Vec<Option<ChessPiece>>> {
         let mut v = vec![None; 8 * 8];
-        for p in self.0.into_iter().filter(|p| p.x != -1 && p.y != -1) {
-            let idx = (8 * p.y + p.x) as usize;
+        for p in self.0.into_iter() {
+            if p.x < 0 || p.y < 0 || p.x > 7 || p.y > 7 {
+                bail!("Piece out of bounds - ({}, {})", p.x, p.y);
+            }
+
+            let idx = u32_to_idx((
+                p.x.try_into().unwrap_log_error(),
+                p.y.try_into().unwrap_log_error(),
+            )); //Cannot fail as we check above
             let current = v
                 .get_mut(idx)
                 .ae()
@@ -53,6 +74,10 @@ impl JSONPieceList {
     }
 }
 
+///Returns a Board that says Uh Oh.
+///
+/// # Panics:
+/// - Shouldn't if list is correct, but might if the list is invalid and fails [`JSONPieceList::into_game_list`]
 pub fn no_connection_list() -> Board {
     let p = |x, y| JSONPiece {
         x,
@@ -100,23 +125,32 @@ pub fn no_connection_list() -> Board {
         .unwrap_log_error()
 }
 
+///JSON repr of a chess move
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Copy)]
 pub struct JSONMove {
+    ///Game ID
     pub id: u32,
+    ///Starting X position
     pub x: u32,
+    ///Starting Y position
     pub y: u32,
+    ///X position to be moved to
     pub nx: u32,
+    ///Y position to be moved to
     pub ny: u32,
 }
 
 impl JSONMove {
+    ///Creates a new instance
     pub const fn new(id: u32, x: u32, y: u32, nx: u32, ny: u32) -> Self {
         Self { id, x, y, nx, ny }
     }
 
+    ///Gets the starting coordinates as a [`Coords`]
     pub const fn current_coords(&self) -> Coords {
         (self.x, self.y)
     }
+    ///Gets the finishing coordinates as a [`Coords`]
     pub const fn new_coords(&self) -> Coords {
         (self.nx, self.ny)
     }

@@ -4,6 +4,7 @@ use std::{
 };
 use strum::{Display, EnumIter, IntoEnumIterator};
 
+///Enum with all of the chess piece kinds
 #[derive(EnumIter, Display, Copy, Clone, PartialEq, Eq)]
 pub enum ChessPieceKind {
     Bishop,
@@ -14,8 +15,10 @@ pub enum ChessPieceKind {
     Rook,
 }
 
+///Enum to hold errors for chess piece kinds
 #[derive(Debug, Display)]
 pub enum ChessPieceKindParseError {
+    ///Failed to find a match
     FailedMatch(String),
 }
 
@@ -38,12 +41,16 @@ impl TryFrom<String> for ChessPieceKind {
     }
 }
 
+///Struct to hold a chess piece
 #[derive(Copy, Clone)]
 pub struct ChessPiece {
+    ///The kind of the chess piece
     pub kind: ChessPieceKind,
+    ///Whether or not this is a white piece.
     pub is_white: bool,
 }
 impl ChessPiece {
+    ///Gets all of the variants of a [`ChessPiece`] - each of the variants of [`ChessPieceKind`] with one black and one white
     pub fn all_variants() -> Vec<Self> {
         let mut v = Vec::with_capacity(12);
 
@@ -61,6 +68,7 @@ impl ChessPiece {
         v
     }
 
+    ///Converts a [`ChessPiece`] to a file name
     pub fn to_file_name(self) -> String {
         format!(
             "{}_{}.png",

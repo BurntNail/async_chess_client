@@ -1,4 +1,8 @@
-use crate::piston::PistonConfig;
+use crate::{
+    error_ext::{ErrorExt, ToAnyhowNotErr},
+    piston::PistonConfig,
+};
+use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use eframe::{egui, App};
 use serde_json::to_string;
@@ -7,6 +11,7 @@ use std::{
     io::Write,
 };
 
+///Function to start up an [`AsyncChessLauncher`] using [`eframe::run_native`]
 #[tracing::instrument]
 pub fn egui_main(uc: Option<PistonConfig>) {
     eframe::run_native(
@@ -16,24 +21,37 @@ pub fn egui_main(uc: Option<PistonConfig>) {
     );
 }
 
+///Struct to run the Egui Configurator.
+///
+/// Holds Strings as that is what egui line-edits take
 #[derive(Debug)]
 struct AsyncChessLauncher {
+    ///The game ID
     id: String,
+    ///The width/height of the to-be-opened window
     res: String,
 }
 
+impl Default for AsyncChessLauncher {
+    fn default() -> Self {
+        Self {
+            id: "0".into(),
+            res: "600".into(),
+        }
+    }
+}
+
 impl AsyncChessLauncher {
+    ///Function to create a new AsyncChessLauncher.
+    ///
+    ///If `start_uc` is [`Some`], then it uses those values, and if not then it uses the [`AsyncChessLauncher::default`] values - `id: 0, res: 600`
     pub fn new(start_uc: Option<PistonConfig>) -> Self {
-        match start_uc {
-            Some(PistonConfig { id, res }) => Self {
+        start_uc
+            .map(|PistonConfig { id, res }| Self {
                 id: id.to_string(),
                 res: res.to_string(),
-            },
-            None => Self {
-                id: "0".into(),
-                res: "600".into(),
-            },
-        }
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -75,47 +93,40 @@ impl App for AsyncChessLauncher {
             id: self.id.parse().unwrap(),
             res: self.res.parse().unwrap(),
         };
-        write_conf_to_file(pc);
+
+        std::thread::spawn(move || {
+            write_conf_to_file(pc).error();
+        });
     }
 }
 
+///Writes the given [`PistonConfig`] to a file.
+///
+/// # Errors
+/// - Fail to get [`ProjectDirs`]
+/// - Fail to [`create_dir_all`] on the config directory
+/// - Fail to convert the [`PistonConfig`] to JSON with [`to_string`]
+/// - Fail to open the file using the [`OpenOptions`]
+/// - Fail to write to the file using [`write!`]
 #[tracing::instrument]
-fn write_conf_to_file(pc: PistonConfig) {
-    std::thread::spawn(move || {
-        info!(?pc, "Writing config to disk");
+fn write_conf_to_file(pc: PistonConfig) -> Result<()> {
+    info!(?pc, "Writing config to disk");
 
-        match to_string(&pc) {
-            Ok(st) => match ProjectDirs::from("com", "jackmaguire", "async_chess") {
-                Some(cd) => {
-                    let path = cd.config_dir();
+    let cd = ProjectDirs::from("com", "jackmaguire", "async_chess")
+        .ae()
+        .context("getting project dirs")?;
+    let cd = cd.config_dir(); //to avoid dropping temporary refs
+    create_dir_all(cd).context("creating config directory")?;
+    let path = cd.join("config.json");
 
-                    match create_dir_all(path) {
-                        Ok(_) => {
-                            let path = path.join("config.json");
+    let st = to_string(&pc).with_context(|| format!("turning {pc:?} to string"))?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&path)
+        .with_context(|| format!("creating OpenOptions and opening {path:?}"))?;
 
-                            let oo = OpenOptions::new()
-                                .create(true)
-                                .write(true)
-                                .open(&path)
-                                .map_err(|ioe| ioe.kind());
+    write!(file, "{}", &st).context("writing to file")?;
 
-                            match oo {
-                                Ok(mut f) => {
-                                    if let Err(e) = write!(f, "{}", st.as_str()) {
-                                        error!(%st, %e, "Error writing to file");
-                                    }
-                                }
-                                Err(e) => {
-                                    error!(?path, error_kind=?e, "Unable to create file");
-                                }
-                            }
-                        }
-                        Err(e) => error!(%e, "Unable to create directory"),
-                    }
-                }
-                None => error!("Unable to find project dirs"),
-            },
-            Err(e) => error!(config=?pc, %e, "Unable to get string repr through sj"),
-        }
-    });
+    Ok(())
 }

@@ -1,4 +1,5 @@
 use crate::{
+    either::Either,
     error_ext::{ErrorExt, ToAnyhowPoisonErr, ToAnyhowThreadErr},
     server_interface::{JSONMove, JSONPieceList},
     time_based_structs::{DoOnInterval, MemoryTimedCacher, ThreadSafeScopedToListTimer},
@@ -15,45 +16,72 @@ use std::{
     time::Duration,
 };
 
-//TODO: More flexible calling API - eg. give an endpoint and an either
-
+///Enum for sending a message to the worker
 #[derive(Debug, PartialEq, Eq)]
 pub enum MessageToWorker {
+    ///Ask the server if the list has changed, if the [`DoOnInterval`] allows so
     UpdateList,
+    ///Ask the server if the list has changed, and reset the [`DoOnInterval`]
     UpdateNOW,
+    ///Ask the server to clear the board for a new game
     RestartBoard,
+    ///Ask the server to invalidate all caches for that game
     InvalidateKill,
+    ///Ask the server to make a move
     MakeMove(JSONMove),
 }
 
+///Enum for sending a message back to the game
 #[derive(Debug)]
 pub enum MessageToGame {
+    ///Update the board
     UpdateBoard(BoardMessage),
 }
 
+///Enum for messages to the game, relating to the board
 #[derive(Debug)]
 pub enum BoardMessage {
+    ///This move has been approved by the client, but not the server, but move it anyway to reduce perception of internet speed
     TmpMove(JSONMove),
+    ///Response from the server on a move made
     Move(MoveOutcome),
+    ///The board hasn't changed since the last update
     UseExisting,
+    ///No connection - use the [`no_connection_list`]
     NoConnectionList,
-    ///Make sure to have 65 elements
+    ///The board has changed, use all of these pieces
     NewList(JSONPieceList),
 }
 
+///The outcome of a move from the server
 #[derive(Debug)]
 pub enum MoveOutcome {
+    ///The move worked and was successful
     Worked,
+    ///The move is invalid, and should be undone
     Invalid,
+    ///The request from `reqwest` failed
     ReqwestFailed,
 }
 
+///Struct to refresh the board and deal with requests to the server, using multi-threading and channels
 pub struct ListRefresher {
+    ///Handle to hold the main thread.
+    ///
+    ///It is an `Option` because that makes it ownable for [`Drop::drop`] using [`std::mem::take`] as you need to own a [`JoinHandle`] to [`JoinHandle::join`] it to receive any errors.
     handle: Option<JoinHandle<()>>,
+    ///Sender to send messages to the main thread
     tx: Sender<MessageToWorker>,
+    ///Receiver for messages sent from the main thread to send them to the game.
     rx: Receiver<MessageToGame>,
 }
 
+///Run the loop - this should be called from a new thread as it blocks heavily until the [`Receiver`] is closed
+///
+/// # Errors
+/// Can return an error if the board is upating and the response cannot be marshalled into [`JSONPieceList`] or if there are errors joining threads.
+///
+/// NB: Threads can still be running when this function ends so be careful about the receiver
 fn run_loop(
     mtw_rx: Receiver<MessageToWorker>,
     mtg_tx: Sender<MessageToGame>,
@@ -141,16 +169,32 @@ fn run_loop(
 
                     let msg = match result_rsp {
                         Ok(rsp) => {
-                            let rsp = rsp.error_for_status()?;
-                            reqwest_error_at_last_refresh.store(false, Ordering::SeqCst);
+                            let rsp = rsp.error_for_status();
+                            match rsp {
+                                Ok(rsp) => {
+                                    reqwest_error_at_last_refresh.store(false, Ordering::SeqCst);
 
-                            if rsp.status() == StatusCode::ALREADY_REPORTED {
-                                BoardMessage::UseExisting
-                            } else {
-                                BoardMessage::NewList(rsp.json::<JSONPieceList>()?)
+                                    if rsp.status() == StatusCode::ALREADY_REPORTED {
+                                        Either::Left(BoardMessage::UseExisting)
+                                    } else {
+                                        Either::Left(BoardMessage::NewList(
+                                            rsp.json::<JSONPieceList>()?,
+                                        ))
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!(%e, "Error updating list");
+
+                                    Either::Right(e)
+                                }
                             }
                         }
-                        Err(e) => {
+                        Err(e) => Either::Right(e),
+                    };
+
+                    let msg = match msg {
+                        Either::Left(m) => m,
+                        Either::Right(e) => {
                             if reqwest_error_at_last_refresh.load(Ordering::SeqCst) {
                                 warn!(%e, "Using existing list due to errors");
                                 BoardMessage::UseExisting
@@ -183,7 +227,7 @@ fn run_loop(
                     {
                         Ok(rsp) => match rsp.error_for_status() {
                             Ok(rsp) => {
-                                info!(update=?rsp.text(), "Update from server on restarting")
+                                info!(update=?rsp.text(), "Update from server on restarting");
                             }
                             Err(e) => warn!(%e, "Error code from server on restarting"),
                         },
@@ -253,7 +297,7 @@ fn run_loop(
                     {
                         Ok(rsp) => match rsp.error_for_status() {
                             Ok(rsp) => {
-                                info!(update=?rsp.text(), "Update from server on invalidating")
+                                info!(update=?rsp.text(), "Update from server on invalidating");
                             }
                             Err(e) => warn!(%e, "Error code from server on invalidating"),
                         },
@@ -271,6 +315,7 @@ fn run_loop(
 }
 
 impl ListRefresher {
+    ///Create a new instance, and start up the main thread
     pub fn new(id: u32) -> Self {
         let (mtw_tx, mtw_rx) = channel();
         let (mtg_tx, mtg_rx) = channel();
@@ -288,9 +333,18 @@ impl ListRefresher {
         }
     }
 
+    ///Sends a message to the main thread
+    ///
+    /// # Errors:
+    /// Can error if there is an error sending the message
     pub fn send_msg(&self, m: MessageToWorker) -> Result<(), SendError<MessageToWorker>> {
         self.tx.send(m)
     }
+    ///Tries to receive a message from the main thread in a non-blocking fashion
+    ///
+    /// # Errors:
+    /// - There is no message
+    /// - The sender has been closed
     pub fn try_recv(&self) -> Result<MessageToGame, TryRecvError> {
         self.rx.try_recv()
     }

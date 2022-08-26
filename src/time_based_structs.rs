@@ -1,5 +1,8 @@
+use crate::error_ext::{ErrorExt, ToAnyhowPoisonErr};
+use anyhow::Context;
 use std::{
     fmt::Debug,
+    mem::MaybeUninit,
     sync::{Arc, Mutex},
 };
 use std::{
@@ -7,13 +10,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context;
-
-use crate::error_ext::{ErrorExt, ToAnyhowNotErr, ToAnyhowPoisonErr};
-
+///Struct to hold a list of items that only get updated on a [`DoOnInterval`], with a circular cache that overwrites the oldest items if there isn't any free space.
 #[derive(Debug)]
 pub struct MemoryTimedCacher<T, const N: usize> {
-    data: [Option<T>; N],
+    data: [MaybeUninit<T>; N],
+    first_written: bool,
+    full: bool,
     index: usize,
 
     timer: Option<DoOnInterval>,
@@ -23,7 +25,9 @@ impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
     fn default() -> Self {
         trace!(size=%N, mem_size=%std::mem::size_of::<[Option<T>; N]>(), "Making memcache struct");
         Self {
-            data: [None; N],
+            data: [MaybeUninit::uninit(); N],
+            first_written: false,
+            full: false,
             index: 0,
             timer: Some(DoOnInterval::new(Duration::from_millis(50))),
         }
@@ -31,45 +35,60 @@ impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
 }
 
 impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
+    ///Creates a blank Memory Cacher
     pub fn new(t: Option<DoOnInterval>) -> Self {
         Self {
-            data: [None; N],
-            index: 0,
             timer: t,
+            ..Default::default()
         }
     }
 
+    ///Adds an element to the list on the following conditions:
+    /// - there are no elements
+    /// - there is a [`DoOnInterval`] timer, and we can use it
+    ///
+    /// # Safety
+    /// We check that there is data at the index before we drop the data at the old index
     pub fn add(&mut self, t: T) {
-        if self.data[0].is_none() {
-            self.data[self.index] = Some(t);
+        let can = !self.first_written
+            || if let Some(doi) = &mut self.timer {
+                doi.can_do().is_some()
+            } else {
+                false
+            };
+
+        if can {
+            if self.first_written {
+                unsafe { self.data[self.index].assume_init_drop() };
+            } else {
+                self.first_written = true;
+            }
+
+            self.data[self.index].write(t);
             self.index = (self.index + 1) % N;
-        } else if let Some(doi) = &mut self.timer {
-            let doiu = doi.can_do();
-            if doiu.is_some() {
-                self.data[self.index] = Some(t);
-                self.index = (self.index + 1) % N;
+
+            if self.index == N - 1 {
+                self.full = true;
             }
         }
     }
 
-    ///Order not preserved
+    ///Gets all of the elements, with order unimportant
+    ///
+    /// # Safety
+    /// We double check there is data beforehand using the `index` variable and the `full` variable
     pub fn get_all(&self) -> Vec<T> {
-        if self.data[0].is_none() {
+        if !self.first_written {
             //no elements yet
             return vec![];
         }
 
-        let end_index =
-            if self.index == N - 1 || matches!(self.data.get(self.index + 1), Some(Some(_))) {
-                N - 1
-            } else {
-                self.index
-            };
+        let end_index = if self.full { N - 1 } else { self.index };
 
         self.data[0..end_index]
             .iter()
             .copied()
-            .map(|opt| opt.ae().context("LOGIC ERROR IN TBS").unwrap_log_error())
+            .map(|opt| unsafe { opt.assume_init_read() })
             .collect()
     }
 }
@@ -82,6 +101,7 @@ macro_rules! average_impl {
                 T: Div<$t> + AddAssign + Default + Clone + Copy + Debug,
             {
                 #[allow(dead_code)]
+                ///Function to get the average of the items in the list
                 pub fn $name(&self) -> T::Output {
                     let mut total = T::default();
                     let mut count = 0;
@@ -105,6 +125,7 @@ macro_rules! average_fp_impl {
                 T: Div<$t> + AddAssign + Default + Clone + Copy + Debug,
             {
                 #[allow(dead_code)]
+                ///Function to get the average of the items in the list
                 pub fn $name(&self) -> T::Output {
                     let mut total = T::default();
                     let mut count = 0.0;
@@ -124,6 +145,9 @@ macro_rules! average_fp_impl {
 average_impl!(u8 => average_u8, u16 => average_u16, u32 => average_u32, u64 => average_u64, u128 => average_u128, i8 => average_i8, i16 => average_i16, i32 => average_i32, i64 => average_i64, i128 => average_i128);
 average_fp_impl!(f32 => average_f32, f64 => average_f64);
 
+//TODO: Make this generic for giving guards or options to update by self
+
+///Timer struct to only allow actions to be performed on an interval
 #[derive(Debug)]
 pub struct DoOnInterval {
     last_did: Instant,
@@ -132,14 +156,18 @@ pub struct DoOnInterval {
 }
 
 impl DoOnInterval {
+    ///Creates a new instance using the duration given
     pub fn new(gap: Duration) -> Self {
         Self {
-            last_did: Instant::now() - Duration::from_secs(1),
+            last_did: Instant::now() - gap * 2,
             gap,
             updater_exists: false,
         }
     }
 
+    ///Checks whether or not we can do the action, using the timer and checking whether any instances of [`DOIUpdate`] currently exist
+    ///
+    /// Returns `None` is we can't, and `Some` if we can. Make sure to bind the [`DOIUpdate`] to allow the [`Drop::drop`] impl to run correctly.
     pub fn can_do(&mut self) -> Option<DOIUpdate> {
         if !self.updater_exists && self.last_did.elapsed() > self.gap {
             self.updater_exists = true;
@@ -150,6 +178,7 @@ impl DoOnInterval {
     }
 }
 
+///Struct to update [`DoOnInterval`] when the action finishes.
 pub struct DOIUpdate<'a>(&'a mut DoOnInterval);
 impl Drop for DOIUpdate<'_> {
     fn drop(&mut self) {
@@ -158,15 +187,19 @@ impl Drop for DOIUpdate<'_> {
     }
 }
 
+///Struct to time how long actions in a given scope last.
 pub struct ScopedTimer {
+    ///The message to print to the logs
     msg: String,
+    ///When the action starts
     start_time: Instant,
 }
 
 impl ScopedTimer {
-    pub fn new(msg: impl Into<String>) -> Self {
+    ///Function to create a new instance and start the timer
+    pub fn new(msg: impl ToString) -> Self {
         Self {
-            msg: msg.into(),
+            msg: msg.to_string(),
             start_time: Instant::now(),
         }
     }
@@ -178,10 +211,12 @@ impl Drop for ScopedTimer {
     }
 }
 
+///Same as [`ScopedTimer`], but updates a [`MemoryTimedCacher`] rather than adding to logs
 pub struct ScopedToListTimer<'a, const N: usize>(&'a mut MemoryTimedCacher<Duration, N>, Instant);
 
 impl<'a, const N: usize> ScopedToListTimer<'a, N> {
     #[allow(dead_code)]
+    ///Creates a new instance, and starts the timer
     pub fn new(t: &'a mut MemoryTimedCacher<Duration, N>) -> Self {
         Self(t, Instant::now())
     }
@@ -193,12 +228,14 @@ impl<'a, const N: usize> Drop for ScopedToListTimer<'a, N> {
     }
 }
 
+///Thread-safe version of [`ScopedToListTimer`] that uses [`Arc`] and [`Mutex`] over `&mut`
 pub struct ThreadSafeScopedToListTimer<const N: usize>(
     Arc<Mutex<MemoryTimedCacher<Duration, N>>>,
     Instant,
 );
 
 impl<const N: usize> ThreadSafeScopedToListTimer<N> {
+    ///Creates a new instance, and starts the timer
     pub fn new(t: Arc<Mutex<MemoryTimedCacher<Duration, N>>>) -> Self {
         Self(t, Instant::now())
     }
@@ -216,52 +253,3 @@ impl<const N: usize> Drop for ThreadSafeScopedToListTimer<N> {
         lock.add(elapsed);
     }
 }
-
-// pub trait Number {
-//     fn zero() -> Self;
-//     fn add_one(&self) -> Self;
-//     fn addassign_one(&mut self);
-// }
-
-// macro_rules! number_impl {
-//     ($($t:ty),+) => {
-//         $(
-//             impl Number for $t {
-//                 fn zero () -> Self {
-//                     0
-//                 }
-
-//                 fn add_one (&self) -> Self {
-//                     self + 1
-//                 }
-
-//                 fn addassign_one (&mut self) {
-//                     *self += 1
-//                 }
-//             }
-//         )+
-//     };
-// }
-// macro_rules! number_fp_impl {
-//     ($($t:ty),+) => {
-//         $(
-//             impl Number for $t {
-//                 fn zero () -> Self {
-//                     0.0
-//                 }
-
-//                 fn add_one (&self) -> Self {
-//                     self + 1.0
-//                 }
-
-//                 fn addassign_one (&mut self) {
-//                     *self += 1.0
-//                 }
-//             }
-//         )+
-//     };
-// }
-
-// number_impl!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
-// number_fp_impl!(f32, f64);
-//TODO: get this to work for the average generic function

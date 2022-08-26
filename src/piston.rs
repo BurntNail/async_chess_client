@@ -8,13 +8,17 @@ use piston_window::{
 };
 use serde::{Deserialize, Serialize};
 
+///Configuration for the Piston window
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct PistonConfig {
+    ///The game id
     pub id: u32,
+    ///The width/height of the window
     pub res: u32,
 }
 
-#[tracing::instrument(skip(pc), level = "debug")]
+///Starts up a piston window using the given [`PistonConfig`]
+#[tracing::instrument(skip(pc))]
 pub fn piston_main(pc: PistonConfig) {
     let mut win: PistonWindow = WindowSettings::new("Async Chess", [pc.res, pc.res])
         .exit_on_esc(true)
@@ -74,7 +78,9 @@ pub fn piston_main(pc: PistonConfig) {
                     if mb == MouseButton::Right {
                         game.clear_mouse_input();
                     } else if mp_valid(mouse_pos, window_scale) {
-                        game.mouse_input(to_board_pixels(mouse_pos, window_scale), window_scale);
+                        game.mouse_input(to_board_pixels(mouse_pos, window_scale), window_scale)
+                            .context("dealing with mouse input")
+                            .error();
                         update_now = true;
                     }
                 }
@@ -93,15 +99,19 @@ pub fn piston_main(pc: PistonConfig) {
     game.exit().context("clearing up").error();
 }
 
-///Must always be called BEFORE [`to_board_pixels`]
-pub fn mp_valid(mouse_pos: (f64, f64), window_scale: f64) -> bool {
-    mouse_pos.0 > 40.0 * window_scale
-        && mouse_pos.0 < 216.0 * window_scale
-        && mouse_pos.1 > 40.0 * window_scale
-        && mouse_pos.1 < 216.0 * window_scale
+///Checks whether or not the mouse is on the board
+///
+/// Must always be called BEFORE [`to_board_pixels`]
+pub fn mp_valid(raw_mp: (f64, f64), window_scale: f64) -> bool {
+    raw_mp.0 > 40.0 * window_scale
+        && raw_mp.0 < 216.0 * window_scale
+        && raw_mp.1 > 40.0 * window_scale
+        && raw_mp.1 < 216.0 * window_scale
 }
 
-///Must always be called AFTER [`mp_valid`]
+///Converts window pixels to board pixels
+///
+/// Must always be called AFTER [`mp_valid`]
 pub fn to_board_pixels(raw_mouse_pos: (f64, f64), window_scale: f64) -> (f64, f64) {
     (
         raw_mouse_pos.0 - 40.0 * window_scale,

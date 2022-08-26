@@ -1,28 +1,36 @@
 use anyhow::Result;
 use std::{any::Any, fmt::Display, sync::LockResult};
 
+///Extension trait for errors to quickly do things
 pub trait ErrorExt<T> {
+    ///If `Err` write to [`warn!`]
     fn warn(self);
+    ///If `Err` write to [`error!`]
     fn error(self);
+    ///If `Err` write to [`error!`] and [`std::process::exit`] with code 1
     fn error_exit(self);
+    ///If `Err` write to [`eprintln!`] and [`std::process::exit`] with code 1
     fn eprint_exit(self);
+    ///If `Err` write to [`error!`] and [`std::process::exit`] with code 1, else return `Ok` value
     fn unwrap_log_error(self) -> T;
 }
 
 macro_rules! to_anyhow_trait {
-    ($($name:ident),+) => {
+    ($($name:ident => $doc:expr),+) => {
         $(
+            #[doc=$doc]
             pub trait $name<T> {
+                ///Converter function to [`anyhow::Result`]
                 fn ae (self) -> anyhow::Result<T>;
             }
         )+
     };
 }
 to_anyhow_trait!(
-    ToAnyhowErr,
-    ToAnyhowNotErr,
-    ToAnyhowPoisonErr,
-    ToAnyhowThreadErr
+    ToAnyhowErr => "Trait to turn [`std::error::Error`] to [`anyhow::Error`]",
+    ToAnyhowNotErr => "Trait to turn non-errors (like [`Option`]) to [`anyhow::Error`]",
+    ToAnyhowPoisonErr => "Trait to turn `Box<dyn Any + Send + 'static>` to [`anyhow::Error`]",
+    ToAnyhowThreadErr => "Trait to turn [`std::sync::LockResult`] to [`anyhow::Result`]"
 );
 //To avoid overlapping trait bounds
 

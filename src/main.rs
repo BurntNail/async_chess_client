@@ -17,6 +17,7 @@ mod list_refresher;
 mod piston;
 mod server_interface;
 mod time_based_structs;
+mod board;
 
 #[macro_use]
 extern crate tracing;
@@ -29,7 +30,7 @@ use anyhow::Result;
 use anyhow::{Context, Error};
 use directories::ProjectDirs;
 use egui_launcher::egui_main;
-use error_ext::ToAnyhow;
+use error_ext::ToAnyhowNotErr;
 use piston::{piston_main, PistonConfig};
 use serde_json::from_str;
 use std::env::{args, set_var, var};
@@ -100,7 +101,7 @@ fn start() {
 #[tracing::instrument]
 fn read_config() -> Result<PistonConfig> {
     let conf_path = ProjectDirs::from("com", "jackmaguire", "async_chess")
-        .to_ae_display()
+        .ae()
         .context("finding project dirs")?
         .config_dir()
         .join("config.json");

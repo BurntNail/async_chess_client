@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::fmt::{Debug, Display};
+use std::{fmt::{Display}, sync::LockResult, any::Any};
 
 pub trait ErrorExt<T> {
     fn warn(self);
@@ -9,16 +9,17 @@ pub trait ErrorExt<T> {
     fn unwrap_log_error(self) -> T;
 }
 
-pub trait ToAnyhowDisplay<T> {
-    fn to_ae_display(self) -> Result<T>;
+macro_rules! to_anyhow_trait {
+    ($($name:ident),+) => {
+        $(
+            pub trait $name<T> {
+                fn ae (self) -> anyhow::Result<T>;
+            }
+        )+
+    };
 }
-pub trait ToAnyhowDebug<T> {
-    fn to_ae_debug(self) -> Result<T>;
-}
-pub trait ToAnyhow<T> {
-    fn to_ae_debug(self) -> Result<T>;
-    fn to_ae_display(self) -> Result<T>;
-}
+to_anyhow_trait!(ToAnyhowErr, ToAnyhowNotErr, ToAnyhowPoisonErr, ToAnyhowThreadErr);
+//To avoid overlapping trait bounds
 
 impl<T, E: Display> ErrorExt<T> for Result<T, E> {
     fn warn(self) {
@@ -58,34 +59,28 @@ impl<T, E: Display> ErrorExt<T> for Result<T, E> {
     }
 }
 
-impl<T, E: Display> ToAnyhowDisplay<T> for Result<T, E> {
-    fn to_ae_display(self) -> Result<T> {
-        self.map_err(|e| anyhow!("{e}"))
-    }
-}
-impl<T, E: Debug> ToAnyhowDebug<T> for Result<T, E> {
-    fn to_ae_debug(self) -> Result<T> {
-        self.map_err(|e| anyhow!("{e:?}"))
-    }
-}
-impl<T, E: Display + Debug> ToAnyhow<T> for Result<T, E> {
-    fn to_ae_debug(self) -> Result<T> {
-        self.map_err(|e| anyhow!("{e}"))
-    }
-
-    fn to_ae_display(self) -> Result<T> {
-        self.map_err(|e| anyhow!("{e:?}"))
-    }
-}
-impl<T> ToAnyhow<T> for Option<T> {
-    fn to_ae_debug(self) -> Result<T> {
+impl<T> ToAnyhowNotErr<T> for Option<T> {
+    fn ae(self) -> Result<T> {
         match self {
             Some(s) => Ok(s),
             None => Err(anyhow!("empty option")),
         }
     }
+}
 
-    fn to_ae_display(self) -> Result<T> {
-        self.to_ae_debug()
+
+impl <T, E: std::error::Error + Send + Sync + 'static> ToAnyhowErr<T> for std::result::Result<T, E> {
+    fn ae (self) -> Result<T> {
+        self.map_err(|e| anyhow::Error::new(e))
+    }
+}
+impl <T> ToAnyhowThreadErr<T> for std::result::Result<T, Box<dyn Any + Send + 'static>> {
+    fn ae (self) -> Result<T> {
+        self.map_err(|_| anyhow!("Error joining thread"))
+    }
+}
+impl <T> ToAnyhowPoisonErr<T> for LockResult<T> {
+    fn ae (self) -> Result<T> {
+        self.map_err(|e| anyhow!("{}", e))
     }
 }

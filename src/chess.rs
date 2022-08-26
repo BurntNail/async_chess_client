@@ -4,7 +4,7 @@ use std::{
 };
 use strum::{Display, EnumIter, IntoEnumIterator};
 
-#[derive(EnumIter, Display, Copy, Clone)]
+#[derive(EnumIter, Display, Copy, Clone, PartialEq, Eq)]
 pub enum ChessPieceKind {
     Bishop,
     Knight,

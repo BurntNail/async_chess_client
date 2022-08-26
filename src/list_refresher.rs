@@ -1,6 +1,6 @@
 use crate::{
-    error_ext::{ErrorExt, ToAnyhowDebug, ToAnyhowDisplay},
-    server_interface::{Board, JSONMove, JSONPieceList},
+    error_ext::{ErrorExt, ToAnyhowThreadErr, ToAnyhowPoisonErr},
+    server_interface::{JSONMove, JSONPieceList},
     time_based_structs::{DoOnInterval, MemoryTimedCacher, ThreadSafeScopedToListTimer},
 };
 use anyhow::{Context as _, Result};
@@ -33,11 +33,11 @@ pub enum MessageToGame {
 #[derive(Debug)]
 pub enum BoardMessage {
     TmpMove(JSONMove),
-    Move(MoveOutcome, JSONMove),
+    Move(MoveOutcome),
     UseExisting,
     NoConnectionList,
     ///Make sure to have 65 elements
-    NewList(Board),
+    NewList(JSONPieceList),
 }
 
 #[derive(Debug)]
@@ -75,7 +75,7 @@ fn run_loop(
     while let Ok(msg) = mtw_rx.recv() {
         {
             let rt = request_timer.clone();
-            let lock = rt.lock().to_ae_display().context("unlocking mtc mutex").unwrap_log_error();
+            let lock = rt.lock().ae().context("unlocking mtc mutex").unwrap_log_error();
             if let Some(_doiu) = request_print_timer.can_do() {
                 let avg_ttr = lock.average_u32();
                 info!(?avg_ttr, "Average time for response");
@@ -92,7 +92,7 @@ fn run_loop(
 
             for index in finished_indicies {
                 let handle = handles.remove(index);
-                let _ = handle.join().to_ae_debug().context("joining handle")?;
+                let _ = handle.join().ae()?;
             }
         }
 
@@ -115,7 +115,7 @@ fn run_loop(
                 handles.push(std::thread::spawn(move || {
                     let _lock = inflight
                         .lock()
-                        .to_ae_display()
+                        .ae()
                         .context("locking inflight mutex").unwrap_log_error();
 
                     let _st = ThreadSafeScopedToListTimer::new(request_timer);
@@ -132,9 +132,7 @@ fn run_loop(
                         if rsp.status() == StatusCode::ALREADY_REPORTED {
                             BoardMessage::UseExisting
                         } else {
-                            let mut l = rsp.json::<JSONPieceList>()?.into_game_list()?;
-                            l.push(None); //The 65th element for the spares
-                            BoardMessage::NewList(l)
+                            BoardMessage::NewList(rsp.json::<JSONPieceList>()?)
                         }
                     }
                     Err(e) => {
@@ -218,7 +216,7 @@ fn run_loop(
                 };
 
                 mtg_tx
-                    .send(MessageToGame::UpdateBoard(BoardMessage::Move(outcome, m)))
+                    .send(MessageToGame::UpdateBoard(BoardMessage::Move(outcome)))
                     .context("piece move result")
                     .warn();
 
@@ -283,9 +281,9 @@ impl Drop for ListRefresher {
     fn drop(&mut self) {
         if let Some(h) = std::mem::take(&mut self.handle) {
             h.join()
-                .to_ae_debug()
-                .context("joining refresher handle")
-                .error_exit();
+                .ae()
+                .context("ending list refresher")
+                .unwrap_log_error();
         }
     }
 }

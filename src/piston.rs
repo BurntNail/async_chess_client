@@ -1,6 +1,6 @@
 use crate::{
     cacher::BOARD_S,
-    error_ext::{ErrorExt, ToAnyhow},
+    error_ext::{ErrorExt},
     game::ChessGame,
     time_based_structs::MemoryTimedCacher,
 };
@@ -23,7 +23,7 @@ pub fn piston_main(pc: PistonConfig) {
         .exit_on_esc(true)
         .resizable(true)
         .build()
-        .to_ae_display()
+        .map_err(|e| anyhow!("{e}"))
         .context("making window")
         .unwrap_log_error();
     // win.set_ups(5);
@@ -33,7 +33,6 @@ pub fn piston_main(pc: PistonConfig) {
         .unwrap_log_error();
 
     game.update_list(true)
-        .to_ae_display()
         .context("initial update")
         .error();
 
@@ -60,7 +59,6 @@ pub fn piston_main(pc: PistonConfig) {
 
         if let Some(_u) = e.update_args() {
             game.update_list(false)
-                .to_ae_display()
                 .context("on update args")
                 .error();
         }
@@ -91,7 +89,6 @@ pub fn piston_main(pc: PistonConfig) {
             }
 
             game.update_list(update_now)
-                .to_ae_display()
                 .with_context(|| format!("update on input update_now: {update_now}"))
                 .error();
         }

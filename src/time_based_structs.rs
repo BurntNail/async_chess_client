@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::Context;
 
-use crate::error_ext::{ErrorExt, ToAnyhow};
+use crate::error_ext::{ToAnyhowPoisonErr, ErrorExt, ToAnyhowNotErr};
 
 #[derive(Debug)]
 pub struct MemoryTimedCacher<T, const N: usize> {
@@ -66,7 +66,7 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
         self.data[0..end_index]
             .iter()
             .copied()
-            .map(|opt| opt.expect("LOGIC ERROR IN TBS"))
+            .map(|opt| opt.ae().context("LOGIC ERROR IN TBS").unwrap_log_error())
             .collect()
     }
 }
@@ -201,7 +201,7 @@ impl<const N: usize> ThreadSafeScopedToListTimer<N> {
 impl<const N: usize> Drop for ThreadSafeScopedToListTimer<N> {
     fn drop(&mut self) {
         let elapsed = self.1.elapsed();
-        let mut lock = self.0.lock().to_ae_display().context("locking memtimercache for timer").unwrap_log_error();
+        let mut lock = self.0.lock().ae().context("locking memtimercache for timer").unwrap_log_error();
         lock.add(elapsed);
     }
 }
@@ -253,4 +253,4 @@ impl<const N: usize> Drop for ThreadSafeScopedToListTimer<N> {
 
 // number_impl!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
 // number_fp_impl!(f32, f64);
-//TODO: get this to work for the average bit
+//TODO: get this to work for the average generic function

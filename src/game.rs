@@ -2,19 +2,19 @@ use crate::{
     cacher::{Cacher, TILE_S},
     list_refresher::{BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome},
     piston::{mp_valid, to_board_pixels},
-    server_interface::{no_connection_list, Board, JSONMove},
+    server_interface::{no_connection_list, JSONMove}, board::{Board, Coords}, error_ext::{ToAnyhowErr, ToAnyhowNotErr, ErrorExt}
 };
 use anyhow::{Context as _, Result};
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
-use std::sync::mpsc::{SendError, TryRecvError};
+use std::sync::mpsc::{TryRecvError};
 
 pub struct ChessGame {
     id: u32,
     c: Cacher,
     board: Board,
-    last_pressed: Option<(u32, u32)>,
-    ex_last_pressed: Option<(u32, u32)>,
+    last_pressed: Option<Coords>,
+    ex_last_pressed: Option<Coords>,
     refresher: ListRefresher,
 }
 impl ChessGame {
@@ -22,7 +22,7 @@ impl ChessGame {
         Ok(Self {
             id,
             c: Cacher::new_and_populate(win).context("making cacher and populating it")?,
-            board: vec![None; 65], //65 for move prediction if smth goes wrong
+            board: Board::default(),
             refresher: ListRefresher::new(id),
             last_pressed: None,
             ex_last_pressed: None,
@@ -51,8 +51,9 @@ impl ChessGame {
         let t = ctx.transform;
         {
             let image = Image::new().rect(square(0.0, 0.0, 256.0 * window_scale));
+            let tex = self.c.get("board_alt.png").ae().context("getting hightlight.png").unwrap_log_error();
             image.draw(
-                self.c.get("board_alt.png").unwrap(),
+                tex,
                 &DrawState::default(),
                 t,
                 graphics,
@@ -68,7 +69,7 @@ impl ChessGame {
                 let image = Image::new().rect(square(x, y, 20.0 * window_scale));
 
                 image.draw(
-                    self.c.get("highlight.png").unwrap(),
+                    self.c.get("highlight.png").ae().context("getting hightlight.png").unwrap_log_error(),
                     &DrawState::default(),
                     trans,
                     graphics,
@@ -79,9 +80,7 @@ impl ChessGame {
 
         for col in 0..8_u32 {
             for row in 0..8_u32 {
-                let idx = row * 8 + col;
-
-                if let Some(piece) = self.board[idx as usize] {
+                if let Some(piece) = self.board[(col, row)] {
                     match self.c.get(&piece.to_file_name()) {
                         None => {
                             errs.push(anyhow!(
@@ -99,8 +98,9 @@ impl ChessGame {
 
                             if let Some((lp_x, lp_y)) = self.last_pressed {
                                 if lp_x == col as u32 && lp_y == row as u32 {
+                                    let tx = self.c.get("selected.png").ae().context("Unable to find \"selected.png\" - check your assets folder").unwrap_log_error();
                                     image.draw(
-                                                self.c.get("selected.png").expect("Unable to find selected.png - check your assets folder"),
+                                                tx,
                                                 &DrawState::default(),
                                                 trans,
                                                 graphics,
@@ -119,16 +119,18 @@ impl ChessGame {
 
         {
             let (raw_x, raw_y) = raw_mouse_coords;
-            if let Some((lp_x, lp_y)) = self.last_pressed {
-                if let Some(piece) = self.board[(lp_y * 8 + lp_x) as usize] {
+            if let Some(lp) = self.last_pressed {
+                if let Some(piece) = self.board[lp] {
                     if let Some(tex) = self.c.get(&piece.to_file_name()) {
                         let s = TILE_S * window_scale / 1.5;
                         let image = Image::new().rect(square(raw_x - s / 2.0, raw_y - s / 2.0, s));
                         image.draw(tex, &DrawState::default(), t, graphics);
                     } else {
                         errs.push(anyhow!(
-                            "Cacher doesn't contain: {} at ({lp_x}, {lp_y} floating)",
-                            piece.to_file_name()
+                            "Cacher doesn't contain: {} at ({}, {} floating)",
+                            piece.to_file_name(),
+                            lp.0,
+                            lp.1
                         ));
                     }
                 } else {
@@ -151,10 +153,7 @@ impl ChessGame {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
                 let lp_y = to_board_coord(mouse_pos.1, mult);
 
-                if matches!(
-                    self.board.get(lp_y as usize * 8 + lp_x as usize),
-                    Some(Some(_))
-                ) {
+                if self.board.piece_exists_at_location((lp_x, lp_y)) {
                     self.last_pressed = Some((lp_x, lp_y));
                 }
             }
@@ -188,29 +187,22 @@ impl ChessGame {
     ///Should be called ASAP after instantiating game, and often afterwards
     // #[tracing::instrument(skip(self))]
     #[allow(irrefutable_let_patterns)]
-    pub fn update_list(&mut self, ignore_timer: bool) -> Result<(), SendError<MessageToWorker>> {
+    pub fn update_list(&mut self, ignore_timer: bool) -> Result<()> {
         match self.refresher.try_recv() {
             Ok(msg) => match msg {
                 MessageToGame::UpdateBoard(msg) => match msg {
                     BoardMessage::TmpMove(m) => {
-                        self.board[64] = self.board[(m.ny * 8 + m.nx) as usize];
-                        self.board[(m.ny * 8 + m.nx) as usize] =
-                            std::mem::take(&mut self.board[(m.y * 8 + m.x) as usize]);
+                        self.board.make_move(m);
                     }
-                    BoardMessage::Move(outcome, m) => match outcome {
-                        MoveOutcome::Worked => self.board[64] = None,
+                    BoardMessage::Move(outcome) => match outcome {
+                        MoveOutcome::Worked => self.board.move_worked(),
                         MoveOutcome::Invalid | MoveOutcome::ReqwestFailed => {
-                            self.last_pressed = std::mem::take(&mut self.ex_last_pressed);
-
-                            self.board[(m.y * 8 + m.x) as usize] =
-                                self.board[(m.ny * 8 + m.nx) as usize];
-                            self.board[(m.ny * 8 + m.nx) as usize] =
-                                std::mem::take(&mut self.board[64]);
+                            self.board.undo_move();
                             info!("Resetting pieces");
                         }
                     },
                     BoardMessage::NoConnectionList => self.board = no_connection_list(),
-                    BoardMessage::NewList(l) => self.board = l,
+                    BoardMessage::NewList(l) => self.board = Board::new_json(l)?,
                     BoardMessage::UseExisting => {}
                 },
             },
@@ -225,7 +217,7 @@ impl ChessGame {
             MessageToWorker::UpdateNOW
         } else {
             MessageToWorker::UpdateList
-        })
+        }).ae()
     }
 
     #[tracing::instrument(skip(self))]

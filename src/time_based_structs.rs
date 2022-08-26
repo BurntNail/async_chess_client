@@ -1,4 +1,7 @@
-use std::{fmt::Debug, sync::{Arc, Mutex}};
+use std::{
+    fmt::Debug,
+    sync::{Arc, Mutex},
+};
 use std::{
     ops::{AddAssign, Div},
     time::{Duration, Instant},
@@ -6,7 +9,7 @@ use std::{
 
 use anyhow::Context;
 
-use crate::error_ext::{ToAnyhowPoisonErr, ErrorExt, ToAnyhowNotErr};
+use crate::error_ext::{ErrorExt, ToAnyhowNotErr, ToAnyhowPoisonErr};
 
 #[derive(Debug)]
 pub struct MemoryTimedCacher<T, const N: usize> {
@@ -82,12 +85,12 @@ macro_rules! average_impl {
                 pub fn $name(&self) -> T::Output {
                     let mut total = T::default();
                     let mut count = 0;
-    
+
                     for el in self.get_all().into_iter() {
                         total += el;
                         count += 1;
                     }
-    
+
                     total / count
                 }
             }
@@ -105,12 +108,12 @@ macro_rules! average_fp_impl {
                 pub fn $name(&self) -> T::Output {
                     let mut total = T::default();
                     let mut count = 0.0;
-    
+
                     for el in self.get_all().into_iter() {
                         total += el;
                         count += 1.0;
                     }
-    
+
                     total / count
                 }
             }
@@ -190,7 +193,10 @@ impl<'a, const N: usize> Drop for ScopedToListTimer<'a, N> {
     }
 }
 
-pub struct ThreadSafeScopedToListTimer<const N: usize>(Arc<Mutex<MemoryTimedCacher<Duration, N>>>, Instant);
+pub struct ThreadSafeScopedToListTimer<const N: usize>(
+    Arc<Mutex<MemoryTimedCacher<Duration, N>>>,
+    Instant,
+);
 
 impl<const N: usize> ThreadSafeScopedToListTimer<N> {
     pub fn new(t: Arc<Mutex<MemoryTimedCacher<Duration, N>>>) -> Self {
@@ -201,7 +207,12 @@ impl<const N: usize> ThreadSafeScopedToListTimer<N> {
 impl<const N: usize> Drop for ThreadSafeScopedToListTimer<N> {
     fn drop(&mut self) {
         let elapsed = self.1.elapsed();
-        let mut lock = self.0.lock().ae().context("locking memtimercache for timer").unwrap_log_error();
+        let mut lock = self
+            .0
+            .lock()
+            .ae()
+            .context("locking memtimercache for timer")
+            .unwrap_log_error();
         lock.add(elapsed);
     }
 }

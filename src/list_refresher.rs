@@ -1,5 +1,5 @@
 use crate::{
-    error_ext::{ErrorExt, ToAnyhowThreadErr, ToAnyhowPoisonErr},
+    error_ext::{ErrorExt, ToAnyhowPoisonErr, ToAnyhowThreadErr},
     server_interface::{JSONMove, JSONPieceList},
     time_based_structs::{DoOnInterval, MemoryTimedCacher, ThreadSafeScopedToListTimer},
 };
@@ -7,8 +7,9 @@ use anyhow::{Context as _, Result};
 use reqwest::{blocking::ClientBuilder, StatusCode};
 use std::{
     sync::{
+        atomic::{AtomicBool, Ordering},
         mpsc::{channel, Receiver, SendError, Sender, TryRecvError},
-        Mutex, Arc, atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
     },
     thread::JoinHandle,
     time::Duration,
@@ -75,7 +76,11 @@ fn run_loop(
     while let Ok(msg) = mtw_rx.recv() {
         {
             let rt = request_timer.clone();
-            let lock = rt.lock().ae().context("unlocking mtc mutex").unwrap_log_error();
+            let lock = rt
+                .lock()
+                .ae()
+                .context("unlocking mtc mutex")
+                .unwrap_log_error();
             if let Some(_doiu) = request_print_timer.can_do() {
                 let avg_ttr = lock.average_u32();
                 info!(?avg_ttr, "Average time for response");
@@ -92,13 +97,16 @@ fn run_loop(
 
             for index in finished_indicies {
                 let handle = handles.remove(index);
-                let _ = handle.join().ae()?;
+                handle
+                    .join()
+                    .ae()
+                    .context("error joining handle")?
+                    .context("error from handle")?;
             }
         }
 
         match msg {
             MessageToWorker::UpdateList | MessageToWorker::UpdateNOW => {
-
                 let _doiu = {
                     if msg == MessageToWorker::UpdateNOW {
                         continue;
@@ -111,46 +119,53 @@ fn run_loop(
                     }
                 };
 
-                let (inflight, reqwest_error_at_last_refresh, mtg_tx, client, request_timer)  = (inflight.clone(), reqwest_error_at_last_refresh.clone(), mtg_tx.clone(), client.clone(), request_timer.clone());
+                let (inflight, reqwest_error_at_last_refresh, mtg_tx, client, request_timer) = (
+                    inflight.clone(),
+                    reqwest_error_at_last_refresh.clone(),
+                    mtg_tx.clone(),
+                    client.clone(),
+                    request_timer.clone(),
+                );
                 handles.push(std::thread::spawn(move || {
                     let _lock = inflight
                         .lock()
                         .ae()
-                        .context("locking inflight mutex").unwrap_log_error();
+                        .context("locking inflight mutex")
+                        .unwrap_log_error();
 
                     let _st = ThreadSafeScopedToListTimer::new(request_timer);
 
                     let result_rsp = client
-                    .get(format!("http://109.74.205.63:12345/games/{}", id))
-                    .send();
+                        .get(format!("http://109.74.205.63:12345/games/{}", id))
+                        .send();
 
-                let msg = match result_rsp {
-                    Ok(rsp) => {
-                        let rsp = rsp.error_for_status()?;
-                        reqwest_error_at_last_refresh.store(false, Ordering::SeqCst);
+                    let msg = match result_rsp {
+                        Ok(rsp) => {
+                            let rsp = rsp.error_for_status()?;
+                            reqwest_error_at_last_refresh.store(false, Ordering::SeqCst);
 
-                        if rsp.status() == StatusCode::ALREADY_REPORTED {
-                            BoardMessage::UseExisting
-                        } else {
-                            BoardMessage::NewList(rsp.json::<JSONPieceList>()?)
+                            if rsp.status() == StatusCode::ALREADY_REPORTED {
+                                BoardMessage::UseExisting
+                            } else {
+                                BoardMessage::NewList(rsp.json::<JSONPieceList>()?)
+                            }
                         }
-                    }
-                    Err(e) => {
-                        if reqwest_error_at_last_refresh.load(Ordering::SeqCst) {
-                            warn!(%e, "Using existing list due to errors");
-                            BoardMessage::UseExisting
-                        } else {
-                            reqwest_error_at_last_refresh.store(true, Ordering::SeqCst);
-                            error!(%e, "Error refreshing list - sending NCL");
-                            BoardMessage::NoConnectionList
+                        Err(e) => {
+                            if reqwest_error_at_last_refresh.load(Ordering::SeqCst) {
+                                warn!(%e, "Using existing list due to errors");
+                                BoardMessage::UseExisting
+                            } else {
+                                reqwest_error_at_last_refresh.store(true, Ordering::SeqCst);
+                                error!(%e, "Error refreshing list - sending NCL");
+                                BoardMessage::NoConnectionList
+                            }
                         }
-                    }
-                };
+                    };
 
-                mtg_tx
-                    .send(MessageToGame::UpdateBoard(msg))
-                    .context("sending update list msg")
-                    .error();
+                    mtg_tx
+                        .send(MessageToGame::UpdateBoard(msg))
+                        .context("sending update list msg")
+                        .error();
 
                     Ok(())
                 }));
@@ -162,16 +177,18 @@ fn run_loop(
                     let _st = ThreadSafeScopedToListTimer::new(rt);
 
                     match client
-                    .post("http://109.74.205.63:12345/newgame")
-                    .body(id.to_string())
-                    .send()
-                {
-                    Ok(rsp) => match rsp.error_for_status() {
-                        Ok(rsp) => info!(update=?rsp.text(), "Update from server on restarting"),
-                        Err(e) => warn!(%e, "Error code from server on restarting"),
-                    },
-                    Err(e) => error!(%e, "Error restarting"),
-                }
+                        .post("http://109.74.205.63:12345/newgame")
+                        .body(id.to_string())
+                        .send()
+                    {
+                        Ok(rsp) => match rsp.error_for_status() {
+                            Ok(rsp) => {
+                                info!(update=?rsp.text(), "Update from server on restarting")
+                            }
+                            Err(e) => warn!(%e, "Error code from server on restarting"),
+                        },
+                        Err(e) => error!(%e, "Error restarting"),
+                    }
                 });
             }
             MessageToWorker::MakeMove(m) => {
@@ -180,68 +197,70 @@ fn run_loop(
                     let _st = ThreadSafeScopedToListTimer::new(rt);
 
                     mtg_tx
-                    .send(MessageToGame::UpdateBoard(BoardMessage::TmpMove(m)))
-                    .context("sending msg to game re moving piece temp")
-                    .warn();
+                        .send(MessageToGame::UpdateBoard(BoardMessage::TmpMove(m)))
+                        .context("sending msg to game re moving piece temp")
+                        .warn();
 
-                let rsp = client
-                    .post("http://109.74.205.63:12345/movepiece")
-                    .json(&m)
-                    .send();
+                    let rsp = client
+                        .post("http://109.74.205.63:12345/movepiece")
+                        .json(&m)
+                        .send();
 
-                let outcome = match rsp {
-                    Ok(rsp) => match rsp.error_for_status() {
-                        Ok(rsp) => {
-                            info!(update=?rsp.text(), "Update from server on moving");
-                            MoveOutcome::Worked
-                        }
-                        Err(e) => {
-                            if let Some(sc) = e.status() {
-                                if sc == StatusCode::PRECONDITION_FAILED {
-                                    error!("Invalid move");
-                                    MoveOutcome::Invalid
+                    let outcome = match rsp {
+                        Ok(rsp) => match rsp.error_for_status() {
+                            Ok(rsp) => {
+                                info!(update=?rsp.text(), "Update from server on moving");
+                                MoveOutcome::Worked
+                            }
+                            Err(e) => {
+                                if let Some(sc) = e.status() {
+                                    if sc == StatusCode::PRECONDITION_FAILED {
+                                        error!("Invalid move");
+                                        MoveOutcome::Invalid
+                                    } else {
+                                        error!(%e, %sc, "Error in input response status code");
+                                        MoveOutcome::ReqwestFailed
+                                    }
                                 } else {
-                                    error!(%e, %sc, "Error in input response status code");
                                     MoveOutcome::ReqwestFailed
                                 }
-                            } else {
-                                MoveOutcome::ReqwestFailed
                             }
+                        },
+                        Err(e) => {
+                            error!(%e, "Error in input response");
+                            MoveOutcome::ReqwestFailed
                         }
-                    },
-                    Err(e) => {
-                        error!(%e, "Error in input response");
-                        MoveOutcome::ReqwestFailed
-                    }
-                };
+                    };
 
-                mtg_tx
-                    .send(MessageToGame::UpdateBoard(BoardMessage::Move(outcome)))
-                    .context("piece move result")
-                    .warn();
+                    mtg_tx
+                        .send(MessageToGame::UpdateBoard(BoardMessage::Move(outcome)))
+                        .context("piece move result")
+                        .warn();
 
-                Ok(())
+                    Ok(())
                 }));
             }
             MessageToWorker::InvalidateKill => {
-                let (client, rt) = (client.clone(), request_timer.clone());
+                let (client, rt) = (client, request_timer);
                 std::thread::spawn(move || {
                     info!("InvalidateKill msg sent");
                     let _st = ThreadSafeScopedToListTimer::new(rt);
 
-                match client
-                    .post("http://109.74.205.63:12345/invalidate")
-                    .body(id.to_string())
-                    .send()
-                {
-                    Ok(rsp) => match rsp.error_for_status() {
-                        Ok(rsp) => info!(update=?rsp.text(), "Update from server on invalidating"),
-                        Err(e) => warn!(%e, "Error code from server on invalidating"),
-                    },
-                    Err(e) => error!(%e, "Error invalidating"),
-                }
+                    match client
+                        .post("http://109.74.205.63:12345/invalidate")
+                        .body(id.to_string())
+                        .send()
+                    {
+                        Ok(rsp) => match rsp.error_for_status() {
+                            Ok(rsp) => {
+                                info!(update=?rsp.text(), "Update from server on invalidating")
+                            }
+                            Err(e) => warn!(%e, "Error code from server on invalidating"),
+                        },
+                        Err(e) => error!(%e, "Error invalidating"),
+                    }
 
-                info!("Ending refresher");
+                    info!("Ending refresher");
                 });
                 break;
             }

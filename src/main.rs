@@ -8,6 +8,7 @@
     clippy::needless_pass_by_value
 )]
 
+mod board;
 mod cacher;
 mod chess;
 mod egui_launcher;
@@ -17,7 +18,6 @@ mod list_refresher;
 mod piston;
 mod server_interface;
 mod time_based_structs;
-mod board;
 
 #[macro_use]
 extern crate tracing;

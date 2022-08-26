@@ -1,5 +1,8 @@
-use crate::{chess::{ChessPiece, ChessPieceKind}, board::{Board, Coords}};
 use crate::error_ext::{ErrorExt, ToAnyhowNotErr};
+use crate::{
+    board::{Board, Coords},
+    chess::{ChessPiece, ChessPieceKind},
+};
 use anyhow::Result;
 use anyhow::{Context, Error};
 use serde::{Deserialize, Serialize};
@@ -31,7 +34,10 @@ impl JSONPieceList {
         let mut v = vec![None; 8 * 8];
         for p in self.0.into_iter().filter(|p| p.x != -1 && p.y != -1) {
             let idx = (8 * p.y + p.x) as usize;
-            let current = v.get_mut(idx).ae().context("getting index from vector in into_game_list")?;
+            let current = v
+                .get_mut(idx)
+                .ae()
+                .context("getting index from vector in into_game_list")?;
 
             if current.is_some() {
                 bail!("Collision at ({}, {})", p.x, p.y);
@@ -89,7 +95,9 @@ pub fn no_connection_list() -> Board {
     //TODO: Change this to read from JSON in data dir
     //TODO: Make a JSON Chess Editor
 
-    Board::new_json(JSONPieceList(list)).context("turning ncl to board").unwrap_log_error()
+    Board::new_json(JSONPieceList(list))
+        .context("turning ncl to board")
+        .unwrap_log_error()
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Copy)]
@@ -106,10 +114,10 @@ impl JSONMove {
         Self { id, x, y, nx, ny }
     }
 
-    pub const fn current_coords (&self) -> Coords {
+    pub const fn current_coords(&self) -> Coords {
         (self.x, self.y)
     }
-    pub const fn new_coords (&self) -> Coords {
+    pub const fn new_coords(&self) -> Coords {
         (self.nx, self.ny)
     }
 }

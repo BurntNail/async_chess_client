@@ -1,13 +1,15 @@
 use crate::{
+    board::{Board, Coords},
     cacher::{Cacher, TILE_S},
+    error_ext::{ErrorExt, ToAnyhowErr, ToAnyhowNotErr},
     list_refresher::{BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome},
     piston::{mp_valid, to_board_pixels},
-    server_interface::{no_connection_list, JSONMove}, board::{Board, Coords}, error_ext::{ToAnyhowErr, ToAnyhowNotErr, ErrorExt}
+    server_interface::{no_connection_list, JSONMove},
 };
 use anyhow::{Context as _, Result};
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
-use std::sync::mpsc::{TryRecvError};
+use std::sync::mpsc::TryRecvError;
 
 pub struct ChessGame {
     id: u32,
@@ -51,13 +53,13 @@ impl ChessGame {
         let t = ctx.transform;
         {
             let image = Image::new().rect(square(0.0, 0.0, 256.0 * window_scale));
-            let tex = self.c.get("board_alt.png").ae().context("getting hightlight.png").unwrap_log_error();
-            image.draw(
-                tex,
-                &DrawState::default(),
-                t,
-                graphics,
-            );
+            let tex = self
+                .c
+                .get("board_alt.png")
+                .ae()
+                .context("getting hightlight.png")
+                .unwrap_log_error();
+            image.draw(tex, &DrawState::default(), t, graphics);
         }
 
         let trans = t.trans(41.0 * window_scale, 41.0 * window_scale);
@@ -69,7 +71,11 @@ impl ChessGame {
                 let image = Image::new().rect(square(x, y, 20.0 * window_scale));
 
                 image.draw(
-                    self.c.get("highlight.png").ae().context("getting hightlight.png").unwrap_log_error(),
+                    self.c
+                        .get("highlight.png")
+                        .ae()
+                        .context("getting hightlight.png")
+                        .unwrap_log_error(),
                     &DrawState::default(),
                     trans,
                     graphics,
@@ -99,12 +105,7 @@ impl ChessGame {
                             if let Some((lp_x, lp_y)) = self.last_pressed {
                                 if lp_x == col as u32 && lp_y == row as u32 {
                                     let tx = self.c.get("selected.png").ae().context("Unable to find \"selected.png\" - check your assets folder").unwrap_log_error();
-                                    image.draw(
-                                                tx,
-                                                &DrawState::default(),
-                                                trans,
-                                                graphics,
-                                            );
+                                    image.draw(tx, &DrawState::default(), trans, graphics);
                                 } else {
                                     draw();
                                 }
@@ -213,11 +214,13 @@ impl ChessGame {
             }
         }
 
-        self.refresher.send_msg(if ignore_timer {
-            MessageToWorker::UpdateNOW
-        } else {
-            MessageToWorker::UpdateList
-        }).ae()
+        self.refresher
+            .send_msg(if ignore_timer {
+                MessageToWorker::UpdateNOW
+            } else {
+                MessageToWorker::UpdateList
+            })
+            .ae()
     }
 
     #[tracing::instrument(skip(self))]

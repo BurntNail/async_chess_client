@@ -1,8 +1,5 @@
 use crate::{
-    cacher::BOARD_S,
-    error_ext::{ErrorExt},
-    game::ChessGame,
-    time_based_structs::MemoryTimedCacher,
+    cacher::BOARD_S, error_ext::ErrorExt, game::ChessGame, time_based_structs::MemoryTimedCacher,
 };
 use anyhow::Context;
 use piston_window::{
@@ -32,9 +29,7 @@ pub fn piston_main(pc: PistonConfig) {
         .context("new chess game")
         .unwrap_log_error();
 
-    game.update_list(true)
-        .context("initial update")
-        .error();
+    game.update_list(true).context("initial update").error();
 
     let mut mouse_pos = (0.0, 0.0);
     let mut time_since_last_frame = 0.0;
@@ -58,9 +53,7 @@ pub fn piston_main(pc: PistonConfig) {
         }
 
         if let Some(_u) = e.update_args() {
-            game.update_list(false)
-                .context("on update args")
-                .error();
+            game.update_list(false).context("on update args").error();
         }
 
         if let Some(pa) = e.press_args() {

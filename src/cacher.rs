@@ -48,6 +48,7 @@ impl Cacher {
     }
 
     ///Gets a [`G2dTexture`] from the cache. Returns [`None`] if there is no asset with that path.
+    #[must_use]
     pub fn get(&self, p: &str) -> Option<&G2dTexture> {
         self.assets.get(p)
     }

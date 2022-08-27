@@ -38,10 +38,10 @@ impl TryInto<Board> for JSONPieceList {
 impl JSONPieceList {
     ///Converts into a true board for the [`chess::Board`].
     ///
-    /// # Errors:
+    /// # Errors
     /// Can return an error for any collisions or if the pieces are out of bounds
     ///
-    /// # Panics:
+    /// # Panics
     /// Has the ability to panic, but if the server follows specs, should be fine
     #[allow(clippy::cast_sign_loss)]
     pub fn into_game_list(self) -> Result<Vec<Option<ChessPiece>>> {
@@ -78,6 +78,7 @@ impl JSONPieceList {
 ///
 /// # Panics:
 /// - Shouldn't if list is correct, but might if the list is invalid and fails [`JSONPieceList::into_game_list`]
+#[must_use]
 pub fn no_connection_list() -> Board {
     let p = |x, y| JSONPiece {
         x,
@@ -142,15 +143,18 @@ pub struct JSONMove {
 
 impl JSONMove {
     ///Creates a new `JSONMove`
+    #[must_use]
     pub const fn new(id: u32, x: u32, y: u32, nx: u32, ny: u32) -> Self {
         Self { id, x, y, nx, ny }
     }
 
     ///Gets the starting coordinates as a [`Coords`]
+    #[must_use]
     pub const fn current_coords(&self) -> Coords {
         (self.x, self.y)
     }
     ///Gets the finishing coordinates as a [`Coords`]
+    #[must_use]
     pub const fn new_coords(&self) -> Coords {
         (self.nx, self.ny)
     }

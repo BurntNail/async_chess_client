@@ -57,6 +57,7 @@ pub struct ChessPiece {
 }
 impl ChessPiece {
     ///Gets all of the variants of a [`ChessPiece`] - each of the variants of [`ChessPieceKind`] with one black and one white
+    #[must_use]
     pub fn all_variants() -> Vec<Self> {
         let mut v = Vec::with_capacity(12);
 
@@ -75,6 +76,7 @@ impl ChessPiece {
     }
 
     ///Converts a [`ChessPiece`] to a file name
+    #[must_use]
     pub fn to_file_name(self) -> String {
         format!(
             "{}_{}.png",

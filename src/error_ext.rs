@@ -22,6 +22,7 @@ macro_rules! to_anyhow_trait {
             #[doc=$doc]
             pub trait $name<T> {
                 ///Converter function to [`anyhow::Result`]
+                #[allow(clippy::missing_errors_doc)]
                 fn ae (self) -> anyhow::Result<T>;
             }
         )+

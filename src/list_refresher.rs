@@ -319,6 +319,7 @@ fn run_loop(
 
 impl ListRefresher {
     ///Create a new `ListRefresher`, and start up the main thread
+    #[must_use]
     pub fn new(id: u32) -> Self {
         let (mtw_tx, mtw_rx) = channel();
         let (mtg_tx, mtg_rx) = channel();
@@ -338,14 +339,14 @@ impl ListRefresher {
 
     ///Sends a message to the main thread
     ///
-    /// # Errors:
+    /// # Errors
     /// Can error if there is an error sending the message
     pub fn send_msg(&self, m: MessageToWorker) -> Result<(), SendError<MessageToWorker>> {
         self.tx.send(m)
     }
     ///Tries to receive a message from the main thread in a non-blocking fashion
     ///
-    /// # Errors:
+    /// # Errors
     /// - There is no message
     /// - The sender has been closed
     pub fn try_recv(&self) -> Result<MessageToGame, TryRecvError> {

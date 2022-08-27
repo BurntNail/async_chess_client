@@ -130,12 +130,14 @@ impl Board {
     }
 
     ///Checks whether or not a piece exists at a given set of coordinates
+    #[must_use]
     pub fn piece_exists_at_location(&self, coords: Coords) -> bool {
         matches!(self.pieces.get(u32_to_idx(coords)), Some(Some(_)))
     }
 }
 
 ///Converts a set of [`Coords`] to a [`usize`] for indexing
+#[must_use]
 pub const fn u32_to_idx((x, y): Coords) -> usize {
     (y * 8 + x) as usize
 }

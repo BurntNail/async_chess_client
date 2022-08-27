@@ -41,6 +41,7 @@ impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
 
 impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
     ///Creates a blank Memory Cacher
+    #[must_use]
     pub fn new(t: Option<DoOnInterval>) -> Self {
         Self {
             timer: t,
@@ -180,6 +181,7 @@ pub struct DoOnInterval {
 
 impl DoOnInterval {
     ///Creates a new `DoOnInterval` using the duration given
+    #[must_use]
     pub fn new(gap: Duration) -> Self {
         Self {
             last_did: Instant::now() - gap * 2,
@@ -258,6 +260,7 @@ pub struct ThreadSafeScopedToListTimer<const N: usize>(
 
 impl<const N: usize> ThreadSafeScopedToListTimer<N> {
     ///Creates a new `ThreadSafeScopedToListTimer`, and starts the timer
+    #[must_use]
     pub fn new(t: Arc<Mutex<MemoryTimedCacher<Duration, N>>>) -> Self {
         Self(t, Instant::now())
     }

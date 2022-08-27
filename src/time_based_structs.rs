@@ -112,7 +112,6 @@ macro_rules! average_impl {
                 T: Div<$t> + AddAssign + Default + Clone + Copy + Debug,
                 T::Output: Default,
             {
-                #[allow(dead_code)]
                 ///Function to get the average of the items in the list
                 pub fn $name(&self) -> T::Output {
                     if self.is_empty() {
@@ -142,7 +141,6 @@ macro_rules! average_fp_impl {
                 T: Div<$t> + AddAssign + Default + Clone + Copy + Debug + Default,
                 T::Output: Default
             {
-                #[allow(dead_code)]
                 ///Function to get the average of the items in the list
                 pub fn $name(&self) -> T::Output {
                     if self.is_empty() {
@@ -240,7 +238,6 @@ impl Drop for ScopedTimer {
 pub struct ScopedToListTimer<'a, const N: usize>(&'a mut MemoryTimedCacher<Duration, N>, Instant);
 
 impl<'a, const N: usize> ScopedToListTimer<'a, N> {
-    #[allow(dead_code)]
     ///Creates a new `ScopedToListTimer`, and starts the timer
     pub fn new(t: &'a mut MemoryTimedCacher<Duration, N>) -> Self {
         Self(t, Instant::now())

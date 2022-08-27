@@ -12,13 +12,11 @@ pub enum Either<L, R> {
 
 impl<L, R> Either<L, R> {
     ///Constructor for [`Either::Left`] which uses [`Into::into`]
-    #[allow(dead_code)]
     pub fn l(a: impl Into<L>) -> Self {
         Self::Left(a.into())
     }
 
     ///Constructor for [`Either::Right`] which uses [`Into::into`]
-    #[allow(dead_code)]
     pub fn r(b: impl Into<R>) -> Self {
         Self::Right(b.into())
     }
@@ -26,7 +24,6 @@ impl<L, R> Either<L, R> {
 
 impl<T> Either<T, T> {
     ///If `L` == `R` then this function will return an `L` - useful for when the [`Either`] side signifies something, but always returns the same type.
-    #[allow(dead_code)]
     #[allow(clippy::missing_const_for_fn)] //Cannot be const as destructors cannot be const - Github error 8874
     pub fn one_type(self) -> T {
         match self {

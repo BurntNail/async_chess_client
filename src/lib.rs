@@ -37,3 +37,9 @@ extern crate tracing;
 
 #[macro_use]
 extern crate anyhow;
+
+///Module to hold trait private contents
+pub(crate) mod crate_private {
+    ///Trait that library users can't implement
+    pub trait Sealed {}
+}

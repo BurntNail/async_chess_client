@@ -7,7 +7,6 @@ use anyhow::{Context, Result};
 use std::ops::{Index, IndexMut};
 
 //TODO: turn Coords to struct
-//TODO: turn pieces to array
 
 ///Utility type to hold a set of [`u32`] coordinates in an `(x, y)` format
 pub type Coords = (u32, u32);
@@ -17,7 +16,7 @@ pub struct Board {
     ///1D vector to hold all of the [`ChessPiece`]s - where the index of each piece is `y * 8 + x`
     ///
     ///`None` signifies no piece, and `Some` signifies a piece
-    pieces: Vec<Option<ChessPiece>>,
+    pieces: [Option<ChessPiece>; 64],
     ///Used to hold the contents and details of the previous move, in case the move was invalid
     ///
     ///Holds the move made, the piece taken, and what the original kind was
@@ -27,7 +26,7 @@ pub struct Board {
 impl Default for Board {
     fn default() -> Self {
         Self {
-            pieces: vec![None; 64],
+            pieces: [None; 64],
             previous: None,
         }
     }

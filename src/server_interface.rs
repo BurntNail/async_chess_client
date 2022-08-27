@@ -44,8 +44,8 @@ impl JSONPieceList {
     /// # Panics
     /// Has the ability to panic, but if the server follows specs, should be fine
     #[allow(clippy::cast_sign_loss)]
-    pub fn into_game_list(self) -> Result<Vec<Option<ChessPiece>>> {
-        let mut v = vec![None; 8 * 8];
+    pub fn into_game_list(self) -> Result<[Option<ChessPiece>; 64]> {
+        let mut v = [None; 8 * 8];
         for p in self.0 {
             if p.x < 0 || p.y < 0 || p.x > 7 || p.y > 7 {
                 bail!("Piece out of bounds - ({}, {})", p.x, p.y);

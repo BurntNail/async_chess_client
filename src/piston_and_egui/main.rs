@@ -1,40 +1,20 @@
-#![warn(
-    clippy::all,
-    clippy::pedantic,
-    clippy::derivable_impls,
-    clippy::missing_docs_in_private_items
-)]
-#![allow(
-    clippy::missing_panics_doc,
-    clippy::module_name_repetitions,
-    clippy::use_self,
-    clippy::too_many_lines,
-    clippy::needless_pass_by_value
-)]
-//! Async Chess Client
+use std::{env::{args, var, set_var}, fs::read_to_string};
+use async_chess_client::{error_ext::{ToAnyhowNotErr, ErrorExt}};
+use directories::ProjectDirs;
+use piston::PistonConfig;
+use anyhow::{Result, Context};
+use serde_json::from_str;
+use tracing_subscriber::{Registry, EnvFilter, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt};
+use tracing_tree::HierarchicalLayer;
+use crate::{piston::piston_main, egui_launcher::egui_main};
 
-///Module to hold [`Board`] struct
-mod board;
-///Module to hold [`Cacher`] struct
-mod cacher;
-///Module to hold chess-related utils
-mod chess;
 ///Module to deal with configurator - [`AsyncChessLauncher`]
 mod egui_launcher;
-///Module to hold [`Either`]
-mod either;
-///Module to hold Error Extension traits
-mod error_ext;
 ///Module to hold the [`ChessGame`] struct and deal with its logic
 mod game;
-///Module to hold the [`ListRefresher`] struct
-mod list_refresher;
 ///Module to hold windowing/rendering logic for the [`ChessGame`]
 mod piston;
-///Module to deal with JSON responses from the server - [`JSONMove`], [`JSONPiece`], and [`JSONPieceList`]
-mod server_interface;
-///Module to hold structs which deal with time
-mod time_based_structs;
+
 
 #[macro_use]
 extern crate tracing;
@@ -42,56 +22,12 @@ extern crate tracing;
 #[macro_use]
 extern crate anyhow;
 
-use crate::error_ext::ErrorExt;
-use anyhow::Result;
-use anyhow::{Context, Error};
-use directories::ProjectDirs;
-use egui_launcher::egui_main;
-use error_ext::ToAnyhowNotErr;
-use piston::{piston_main, PistonConfig};
-use serde_json::from_str;
-use std::env::{args, set_var, var};
-use std::fs::read_to_string;
-use tracing_subscriber::{prelude::*, EnvFilter, Registry};
-use tracing_tree::HierarchicalLayer;
-
-fn main() {
+fn main () {
     setup_logging_tracing().eprint_exit();
 
     info!("Thanks to Devil's Workshop for the Chess Assets!");
 
     start();
-}
-
-///Function to setup all of the logging and tracing for the program
-///
-/// - Firstly, it sets the environment variables `RUST_LIB_BACKTRACE` to `1` and `RUST_LOG` to `info`
-/// - Then it sets up an Environment tracing logger with Tracing Tree
-///
-/// # Errors
-/// Can return an error if the tracing [`Registry`] fails to initialise, and this happens when:
-/// > `This method returns an error if a global default subscriber has already been set, or if a log logger has already been set (when the "tracing-log" feature is enabled).`
-#[tracing::instrument]
-fn setup_logging_tracing() -> Result<(), Error> {
-    for (k, v) in &[("RUST_LIB_BACKTRACE", "1"), ("RUST_LOG", "info")] {
-        if var(k).is_err() {
-            println!("Setting {k} to {v}");
-            set_var(k, v);
-        }
-    }
-
-    Registry::default()
-        .with(EnvFilter::builder().from_env()?)
-        .with(
-            HierarchicalLayer::new(1)
-                .with_targets(true)
-                .with_bracketed_fields(true)
-                .with_verbose_entry(true)
-                .with_ansi(true), // .with_filter(Level::INFO.into())
-        )
-        .try_init()?;
-
-    Ok(())
 }
 
 ///Function to run the game.
@@ -139,7 +75,7 @@ fn start() {
 /// - Cannot read in the contents of the path using [`read_to_string`]
 /// - Cannot parse the contents using [`from_str`] into a [`PistonConfig`]
 #[tracing::instrument]
-fn read_config() -> Result<PistonConfig> {
+pub fn read_config() -> Result<PistonConfig> {
     let conf_path = ProjectDirs::from("com", "jackmaguire", "async_chess")
         .ae()
         .context("finding project dirs")?
@@ -148,4 +84,35 @@ fn read_config() -> Result<PistonConfig> {
     let cntnts =
         read_to_string(&conf_path).with_context(|| format!("reading path {conf_path:?}"))?;
     from_str::<PistonConfig>(&cntnts).with_context(|| format!("reading contents {cntnts}"))
+}
+
+///Function to setup all of the logging and tracing for the program
+///
+/// - Firstly, it sets the environment variables `RUST_LIB_BACKTRACE` to `1` and `RUST_LOG` to `info`
+/// - Then it sets up an Environment tracing logger with Tracing Tree
+///
+/// # Errors
+/// Can return an error if the tracing [`Registry`] fails to initialise, and this happens when:
+/// > `This method returns an error if a global default subscriber has already been set, or if a log logger has already been set (when the "tracing-log" feature is enabled).`
+#[tracing::instrument]
+pub fn setup_logging_tracing() -> Result<()> {
+    for (k, v) in &[("RUST_LIB_BACKTRACE", "1"), ("RUST_LOG", "info")] {
+        if var(k).is_err() {
+            println!("Setting {k} to {v}");
+            set_var(k, v);
+        }
+    }
+
+    Registry::default()
+        .with(EnvFilter::builder().from_env()?)
+        .with(
+            HierarchicalLayer::new(1)
+                .with_targets(true)
+                .with_bracketed_fields(true)
+                .with_verbose_entry(true)
+                .with_ansi(true), // .with_filter(Level::INFO.into())
+        )
+        .try_init()?;
+
+    Ok(())
 }

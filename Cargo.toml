@@ -20,4 +20,8 @@ tracing = "0.1.36"
 tracing-subscriber = { version = "0.3.15", features = ["env-filter"] }
 tracing-tree = "0.2.1"
 
+[[bin]]
+name = "piston_and_egui"
+path = "src/piston_and_egui/main.rs"
+
 [features]

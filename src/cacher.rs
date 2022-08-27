@@ -43,6 +43,7 @@ impl Cacher {
     pub fn new_and_populate(win: &mut PistonWindow) -> Result<Self> {
         let mut s = Self::new()?;
         s.populate(win)?;
+        info!("Done populating");
         Ok(s)
     }
 
@@ -57,7 +58,7 @@ impl Cacher {
     /// - Unable to find the texture using [`Texture::from_path`]
     fn insert(&mut self, p: &str, win: &mut PistonWindow) -> Result<()> {
         let path = self.base_path.join(p);
-        let ts = TextureSettings::new().filter(Filter::Linear);
+        let ts = TextureSettings::new().filter(Filter::Nearest);
 
         match Texture::from_path(&mut win.create_texture_context(), path, Flip::None, &ts) {
             Ok(tex) => {

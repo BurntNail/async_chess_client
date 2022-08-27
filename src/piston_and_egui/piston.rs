@@ -1,5 +1,5 @@
-use crate::{
-    cacher::BOARD_S, error_ext::ErrorExt, game::ChessGame, time_based_structs::MemoryTimedCacher,
+use async_chess_client::{
+    cacher::BOARD_S, error_ext::ErrorExt, time_based_structs::MemoryTimedCacher,
 };
 use anyhow::Context;
 use piston_window::{
@@ -7,6 +7,8 @@ use piston_window::{
     Window, WindowSettings,
 };
 use serde::{Deserialize, Serialize};
+
+use crate::game::ChessGame;
 
 ///Configuration for the Piston window
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -41,7 +43,10 @@ pub fn piston_main(pc: PistonConfig) {
 
     while let Some(e) = win.next() {
         let size = win.size();
-        debug!(fps=%(1.0 / time_since_last_frame), cached_fps=%(1.0 / cached_dt.average_f64()));
+        
+        if time_since_last_frame == 0.0 || cached_dt.is_empty() {
+            debug!(fps=%(1.0 / time_since_last_frame), cached_fps=%(1.0 / cached_dt.average_f64()));
+        }
 
         if let Some(r) = e.render_args() {
             time_since_last_frame = r.ext_dt;

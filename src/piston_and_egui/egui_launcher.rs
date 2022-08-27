@@ -1,6 +1,5 @@
-use crate::{
+use async_chess_client::{
     error_ext::{ErrorExt, ToAnyhowNotErr},
-    piston::PistonConfig,
 };
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
@@ -10,6 +9,8 @@ use std::{
     fs::{create_dir_all, OpenOptions},
     io::Write,
 };
+
+use crate::piston::PistonConfig;
 
 ///Function to start up an [`AsyncChessLauncher`] using [`eframe::run_native`]
 #[tracing::instrument]

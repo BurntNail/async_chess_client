@@ -1,15 +1,15 @@
-use crate::{
+use async_chess_client::{
     board::{Board, Coords},
     cacher::{Cacher, TILE_S},
     error_ext::{ErrorExt, ToAnyhowErr, ToAnyhowNotErr},
     list_refresher::{BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome},
-    piston::{mp_valid, to_board_pixels},
     server_interface::{no_connection_list, JSONMove},
 };
 use anyhow::{Context as _, Result};
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use std::sync::mpsc::TryRecvError;
+use crate::piston::{mp_valid, to_board_pixels};
 
 ///Struct to hold Game of Chess
 pub struct ChessGame {
@@ -234,6 +234,7 @@ impl ChessGame {
             Err(e) => {
                 if e != TryRecvError::Empty {
                     error!(%e, "Try recv error from worker");
+                    std::process::exit(1);
                 }
             }
         }

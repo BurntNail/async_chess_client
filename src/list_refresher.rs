@@ -109,6 +109,7 @@ fn run_loop(
                 .ae()
                 .context("unlocking mtc mutex")
                 .unwrap_log_error();
+
             if let Some(_doiu) = request_print_timer.can_do() {
                 let avg_ttr = lock.average_u32();
                 info!(?avg_ttr, "Average time for response");
@@ -137,13 +138,14 @@ fn run_loop(
             MessageToWorker::UpdateList | MessageToWorker::UpdateNOW => {
                 let _doiu = {
                     if msg == MessageToWorker::UpdateNOW {
-                        continue;
-                    }
-                    let doiu = refresh_timer.can_do();
-                    if let Some(doiu) = doiu {
-                        doiu
+                        None //continue regardless
                     } else {
-                        continue;
+                        let doiu = refresh_timer.can_do();
+                        if let Some(doiu) = doiu {
+                            Some(doiu) //doi says we can
+                        } else {
+                            continue; //next in loop
+                        }    
                     }
                 };
 
@@ -164,7 +166,7 @@ fn run_loop(
                     let _st = ThreadSafeScopedToListTimer::new(request_timer);
 
                     let result_rsp = client
-                        .get(format!("http://109.74.205.63:12345/games/{}", id))
+                        .get(format!("http://109.74.205.63:12345/games/{id}"))
                         .send();
 
                     let msg = match result_rsp {
@@ -191,6 +193,7 @@ fn run_loop(
                         }
                         Err(e) => Either::Right(e),
                     };
+
 
                     let msg = match msg {
                         Either::Left(m) => m,
@@ -285,15 +288,15 @@ fn run_loop(
                 }));
             }
             MessageToWorker::InvalidateKill => {
-                let (client, rt) = (client, request_timer);
-                std::thread::spawn(move || {
-                    info!("InvalidateKill msg sent");
-                    let _st = ThreadSafeScopedToListTimer::new(rt);
+                
+                info!("InvalidateKill msg sending");
 
-                    match client
-                        .post("http://109.74.205.63:12345/invalidate")
-                        .body(id.to_string())
-                        .send()
+                    let rsp = client
+                    .post("http://109.74.205.63:12345/invalidate")
+                    .body(id.to_string())
+                    .send();
+                    
+                    match rsp
                     {
                         Ok(rsp) => match rsp.error_for_status() {
                             Ok(rsp) => {
@@ -305,7 +308,7 @@ fn run_loop(
                     }
 
                     info!("Ending refresher");
-                });
+                
                 break;
             }
         }
@@ -352,6 +355,8 @@ impl ListRefresher {
 
 impl Drop for ListRefresher {
     fn drop(&mut self) {
+        info!("Dropping LR");
+
         if let Some(h) = std::mem::take(&mut self.handle) {
             h.join()
                 .ae()

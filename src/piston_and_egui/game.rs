@@ -150,7 +150,7 @@ impl ChessGame {
                         ));
                     }
                 } else {
-                    warn!("no piece at last pressed");
+                    self.last_pressed = None;
                 }
             }
         }

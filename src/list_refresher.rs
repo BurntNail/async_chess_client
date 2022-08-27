@@ -355,8 +355,6 @@ impl ListRefresher {
 
 impl Drop for ListRefresher {
     fn drop(&mut self) {
-        info!("Dropping LR");
-
         if let Some(h) = std::mem::take(&mut self.handle) {
             h.join()
                 .ae()

@@ -59,7 +59,7 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
             || if let Some(doi) = &mut self.timer {
                 doi.can_do().is_some()
             } else {
-                false
+                true
             };
 
         if can {

@@ -96,6 +96,11 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
             .map(|opt| unsafe { opt.assume_init_read() })
             .collect()
     }
+
+    ///Returns whether or not the list is empty
+    pub fn is_empty (&self) -> bool {
+        !self.data_ever_written
+    }
 }
 
 ///Creates an average function for an {integer} type
@@ -105,10 +110,15 @@ macro_rules! average_impl {
             impl<T, const N: usize> MemoryTimedCacher<T, N>
             where
                 T: Div<$t> + AddAssign + Default + Clone + Copy + Debug,
+                T::Output: Default,
             {
                 #[allow(dead_code)]
                 ///Function to get the average of the items in the list
                 pub fn $name(&self) -> T::Output {
+                    if self.is_empty() {
+                        return T::Output::default();
+                    }
+
                     let mut total = T::default();
                     let mut count = 0;
 
@@ -129,11 +139,16 @@ macro_rules! average_fp_impl {
         $(
             impl<T, const N: usize> MemoryTimedCacher<T, N>
             where
-                T: Div<$t> + AddAssign + Default + Clone + Copy + Debug,
+                T: Div<$t> + AddAssign + Default + Clone + Copy + Debug + Default,
+                T::Output: Default
             {
                 #[allow(dead_code)]
                 ///Function to get the average of the items in the list
                 pub fn $name(&self) -> T::Output {
+                    if self.is_empty() {
+                        return T::Output::default();
+                    }
+
                     let mut total = T::default();
                     let mut count = 0.0;
 

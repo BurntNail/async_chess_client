@@ -101,7 +101,7 @@ impl ChessGame {
 
         for col in 0..8_u32 {
             for row in 0..8_u32 {
-                if let Some(piece) = self.board[(col, row)] {
+                if let Some(piece) = self.board[(col, row).try_into().unwrap_log_error()] {
                     match self.c.get(&piece.to_file_name()) {
                         None => {
                             errs.push(anyhow!(
@@ -117,7 +117,7 @@ impl ChessGame {
                             let mut draw =
                                 || image.draw(tex, &DrawState::default(), trans, graphics);
 
-                            if let Some((lp_x, lp_y)) = self.last_pressed {
+                            if let Some((lp_x, lp_y)) = self.last_pressed.map(Into::into) {
                                 if lp_x == col as u32 && lp_y == row as u32 {
                                     let tx = self.c.get("selected.png").ae().context("Unable to find \"selected.png\" - check your assets folder").unwrap_log_error();
                                     image.draw(tx, &DrawState::default(), trans, graphics);
@@ -143,10 +143,9 @@ impl ChessGame {
                         image.draw(tex, &DrawState::default(), t, graphics);
                     } else {
                         errs.push(anyhow!(
-                            "Cacher doesn't contain: {} at ({}, {} floating)",
+                            "Cacher doesn't contain: {} at ({:?} floating)",
                             piece.to_file_name(),
-                            lp.0,
-                            lp.1
+                            lp
                         ));
                     }
                 } else {
@@ -173,8 +172,10 @@ impl ChessGame {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
                 let lp_y = to_board_coord(mouse_pos.1, mult);
 
-                if self.board.piece_exists_at_location((lp_x, lp_y)) {
-                    self.last_pressed = Some((lp_x, lp_y));
+                let coord = (lp_x, lp_y).try_into()?;
+
+                if self.board.piece_exists_at_location(coord) {
+                    self.last_pressed = Some(coord);
                 }
             }
             Some(lp) => {
@@ -190,8 +191,8 @@ impl ChessGame {
                 self.refresher
                     .send_msg(MessageToWorker::MakeMove(JSONMove::new(
                         self.id,
-                        lp.0,
-                        lp.1,
+                        lp.x(),
+                        lp.y(),
                         current_press.0,
                         current_press.1,
                     )))

@@ -4,12 +4,56 @@ use crate::{
     server_interface::{JSONMove, JSONPieceList},
 };
 use anyhow::{Context, Result};
-use std::ops::{Index, IndexMut};
-
-//TODO: turn Coords to struct
+use std::{ops::{Index, IndexMut}, fmt::Debug};
 
 ///Utility type to hold a set of [`u32`] coordinates in an `(x, y)` format
-pub type Coords = (u32, u32);
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct Coords (u32, u32);
+
+impl Debug for Coords {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Coords").field("x", &self.0).field("y", &self.1).finish()
+    }
+}
+
+impl TryFrom<(i32, i32)> for Coords {
+    type Error = anyhow::Error;
+
+    fn try_from((x, y): (i32, i32)) -> Result<Self, Self::Error> {
+        if x < 0 { bail!("x < 0")}
+        if x > 7 { bail!("x > 7")}
+        if y < 0 { bail!("y < 0")}
+        if y > 7 { bail!("y > 7")}
+
+        Ok(Self (x as u32, y as u32)) //conversion works as all checked above
+    }
+}
+impl TryFrom<(u32, u32)> for Coords {
+    type Error = anyhow::Error;
+
+    fn try_from((x, y): (u32, u32)) -> Result<Self, Self::Error> {
+        if x > 7 { bail!("x > 7")}
+        if y > 7 { bail!("y > 7")}
+
+        Ok(Self (x as u32, y as u32)) //conversion works as all checked above
+    }
+}
+impl Into<(u32, u32)> for Coords {
+    fn into(self) -> (u32, u32) {
+        (self.0, self.1)
+    }
+}
+impl Coords {
+    pub fn to_usize (&self) -> usize {
+        (self.1 * 8 + self.0) as usize
+    }
+    pub const fn x (&self) -> u32 {
+        self.0
+    }
+    pub const fn y (&self) -> u32 {
+        self.1
+    }
+}
 
 ///Struct to hold a Chess Board
 pub struct Board {
@@ -41,7 +85,7 @@ impl Index<Coords> for Board {
     /// Can panic if the coords are out-of-bounds, but very unlikely
     fn index(&self, index: Coords) -> &Self::Output {
         self.pieces
-            .get(u32_to_idx(index))
+            .get(index.to_usize())
             .ae()
             .with_context(|| format!("Getting position from {index:?}"))
             .unwrap_log_error()
@@ -55,7 +99,7 @@ impl IndexMut<Coords> for Board {
     /// Can panic if the coords are out-of-bounds, but very unlikely
     fn index_mut(&mut self, index: Coords) -> &mut Self::Output {
         self.pieces
-            .get_mut(u32_to_idx(index))
+            .get_mut(index.to_usize())
             .ae()
             .with_context(|| format!("Getting position mutably from {index:?}"))
             .unwrap_log_error()
@@ -131,12 +175,6 @@ impl Board {
     ///Checks whether or not a piece exists at a given set of coordinates
     #[must_use]
     pub fn piece_exists_at_location(&self, coords: Coords) -> bool {
-        matches!(self.pieces.get(u32_to_idx(coords)), Some(Some(_)))
+        matches!(self.pieces.get(coords.to_usize()), Some(Some(_)))
     }
-}
-
-///Converts a set of [`Coords`] to a [`usize`] for indexing
-#[must_use]
-pub const fn u32_to_idx((x, y): Coords) -> usize {
-    (y * 8 + x) as usize
 }

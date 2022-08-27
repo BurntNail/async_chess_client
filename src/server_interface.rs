@@ -1,5 +1,4 @@
 use crate::{
-    board::u32_to_idx,
     error_ext::{ErrorExt, ToAnyhowNotErr},
 };
 use crate::{
@@ -47,16 +46,8 @@ impl JSONPieceList {
     pub fn into_game_list(self) -> Result<[Option<ChessPiece>; 64]> {
         let mut v = [None; 8 * 8];
         for p in self.0 {
-            if p.x < 0 || p.y < 0 || p.x > 7 || p.y > 7 {
-                bail!("Piece out of bounds - ({}, {})", p.x, p.y);
-            }
-
-            let idx = u32_to_idx((
-                p.x.try_into().unwrap_log_error(),
-                p.y.try_into().unwrap_log_error(),
-            )); //Cannot fail as we check above
             let current = v
-                .get_mut(idx)
+                .get_mut(Coords::try_from((p.x, p.y))?.to_usize())
                 .ae()
                 .context("getting index from vector in into_game_list")?;
 
@@ -150,12 +141,12 @@ impl JSONMove {
 
     ///Gets the starting coordinates as a [`Coords`]
     #[must_use]
-    pub const fn current_coords(&self) -> Coords {
-        (self.x, self.y)
+    pub fn current_coords(&self) -> Coords {
+        (self.x, self.y).try_into().unwrap_log_error()
     }
     ///Gets the finishing coordinates as a [`Coords`]
     #[must_use]
-    pub const fn new_coords(&self) -> Coords {
-        (self.nx, self.ny)
+    pub fn new_coords(&self) -> Coords {
+        (self.nx, self.ny).try_into().unwrap_log_error()
     }
 }

@@ -1,12 +1,17 @@
-use std::{env::{args, var, set_var}, fs::read_to_string};
-use async_chess_client::{error_ext::{ToAnyhowNotErr, ErrorExt}};
+use crate::{egui_launcher::egui_main, piston::piston_main};
+use anyhow::{Context, Result};
+use async_chess_client::error_ext::{ErrorExt, ToAnyhowNotErr};
 use directories::ProjectDirs;
 use piston::PistonConfig;
-use anyhow::{Result, Context};
 use serde_json::from_str;
-use tracing_subscriber::{Registry, EnvFilter, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt};
+use std::{
+    env::{args, set_var, var},
+    fs::read_to_string,
+};
+use tracing_subscriber::{
+    prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry,
+};
 use tracing_tree::HierarchicalLayer;
-use crate::{piston::piston_main, egui_launcher::egui_main};
 
 ///Module to deal with configurator - [`AsyncChessLauncher`]
 mod egui_launcher;
@@ -15,14 +20,13 @@ mod game;
 ///Module to hold windowing/rendering logic for the [`ChessGame`]
 mod piston;
 
-
 #[macro_use]
 extern crate tracing;
 
 #[macro_use]
 extern crate anyhow;
 
-fn main () {
+fn main() {
     setup_logging_tracing().eprint_exit();
 
     info!("Thanks to Devil's Workshop for the Chess Assets!");

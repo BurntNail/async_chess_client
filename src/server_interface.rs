@@ -1,13 +1,9 @@
 use crate::{
-    board::u32_to_idx,
+    board::{u32_to_idx, Board, Coords},
+    chess::{ChessPiece, ChessPieceKind},
     error_ext::{ErrorExt, ToAnyhowNotErr},
 };
-use crate::{
-    board::{Board, Coords},
-    chess::{ChessPiece, ChessPieceKind},
-};
-use anyhow::Result;
-use anyhow::{Context, Error};
+use anyhow::{Context, Error, Result};
 use serde::{Deserialize, Serialize};
 
 ///Unit struct to hold a vector of [`JSONPiece`]s.

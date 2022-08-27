@@ -145,7 +145,7 @@ fn run_loop(
                             Some(doiu) //doi says we can
                         } else {
                             continue; //next in loop
-                        }    
+                        }
                     }
                 };
 
@@ -193,7 +193,6 @@ fn run_loop(
                         }
                         Err(e) => Either::Right(e),
                     };
-
 
                     let msg = match msg {
                         Either::Left(m) => m,
@@ -288,27 +287,25 @@ fn run_loop(
                 }));
             }
             MessageToWorker::InvalidateKill => {
-                
                 info!("InvalidateKill msg sending");
 
-                    let rsp = client
+                let rsp = client
                     .post("http://109.74.205.63:12345/invalidate")
                     .body(id.to_string())
                     .send();
-                    
-                    match rsp
-                    {
-                        Ok(rsp) => match rsp.error_for_status() {
-                            Ok(rsp) => {
-                                info!(update=?rsp.text(), "Update from server on invalidating");
-                            }
-                            Err(e) => warn!(%e, "Error code from server on invalidating"),
-                        },
-                        Err(e) => error!(%e, "Error invalidating"),
-                    }
 
-                    info!("Ending refresher");
-                
+                match rsp {
+                    Ok(rsp) => match rsp.error_for_status() {
+                        Ok(rsp) => {
+                            info!(update=?rsp.text(), "Update from server on invalidating");
+                        }
+                        Err(e) => warn!(%e, "Error code from server on invalidating"),
+                    },
+                    Err(e) => error!(%e, "Error invalidating"),
+                }
+
+                info!("Ending refresher");
+
                 break;
             }
         }

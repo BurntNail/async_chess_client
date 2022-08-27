@@ -1,3 +1,5 @@
+use crate::piston::{mp_valid, to_board_pixels};
+use anyhow::{Context as _, Result};
 use async_chess_client::{
     board::{Board, Coords},
     cacher::{Cacher, TILE_S},
@@ -5,11 +7,9 @@ use async_chess_client::{
     list_refresher::{BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome},
     server_interface::{no_connection_list, JSONMove},
 };
-use anyhow::{Context as _, Result};
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use std::sync::mpsc::TryRecvError;
-use crate::piston::{mp_valid, to_board_pixels};
 
 ///Struct to hold Game of Chess
 pub struct ChessGame {

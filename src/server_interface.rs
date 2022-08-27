@@ -1,10 +1,9 @@
-use crate::error_ext::{ErrorExt, ToAnyhowNotErr};
 use crate::{
     board::{Board, Coords},
     chess::{ChessPiece, ChessPieceKind},
+    error_ext::{ErrorExt, ToAnyhowNotErr},
 };
-use anyhow::Result;
-use anyhow::{Context, Error};
+use anyhow::{Context, Error, Result};
 use serde::{Deserialize, Serialize};
 
 ///Unit struct to hold a vector of [`JSONPiece`]s.
@@ -106,9 +105,6 @@ pub fn no_connection_list() -> Board {
         p(5, 7),
         p(7, 7),
     ];
-
-    //TODO: Change this to read from JSON in data dir
-    //TODO: Make a JSON Chess Editor
 
     Board::new_json(JSONPieceList(list))
         .context("turning ncl to board")

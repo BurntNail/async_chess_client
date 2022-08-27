@@ -1,15 +1,17 @@
-use crate::{error_ext::{ErrorExt, ToAnyhowPoisonErr}, either::Either};
+use crate::{
+    crate_private::Sealed,
+    either::Either,
+    error_ext::{ErrorExt, ToAnyhowPoisonErr},
+};
 use anyhow::Context;
 use std::{
     fmt::{Debug, Display},
+    marker::PhantomData,
     mem::MaybeUninit,
-    sync::{Arc, Mutex}, marker::PhantomData,
-};
-use std::{
     ops::{AddAssign, Div},
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use crate::crate_private::Sealed;
 
 ///Struct to hold a list of items that only get updated on a [`DoOnInterval`], with a circular cache that overwrites the oldest items if there isn't any free space.
 #[derive(Debug)]
@@ -199,7 +201,7 @@ pub struct DoOnInterval<MODE: DoOnIntervalMode> {
     updater_exists: bool,
 
     ///`PhantomData` to make sure mode isn't optimised away
-    _pd: PhantomData<MODE>
+    _pd: PhantomData<MODE>,
 }
 
 impl<MODE: DoOnIntervalMode> DoOnInterval<MODE> {
@@ -210,7 +212,7 @@ impl<MODE: DoOnIntervalMode> DoOnInterval<MODE> {
             last_did: Instant::now() - gap * 2,
             gap,
             updater_exists: false,
-            _pd: PhantomData
+            _pd: PhantomData,
         }
     }
 }
@@ -229,7 +231,9 @@ impl DoOnInterval<GiveUpdaters> {
     }
 
     ///Turns a [`GiveUpdaters`] to an [`UpdateOnCheck`]. Can return the original [`GiveUpdaters`] if an updater currently exists
-    pub fn to_update_on_check (self) -> Either<DoOnInterval<GiveUpdaters>, DoOnInterval<UpdateOnCheck>> {
+    pub fn to_update_on_check(
+        self,
+    ) -> Either<DoOnInterval<GiveUpdaters>, DoOnInterval<UpdateOnCheck>> {
         if self.updater_exists {
             Either::Left(self)
         } else {
@@ -237,7 +241,7 @@ impl DoOnInterval<GiveUpdaters> {
                 last_did: self.last_did,
                 gap: self.gap,
                 updater_exists: false,
-                _pd: PhantomData
+                _pd: PhantomData,
             };
             Either::Right(nu)
         }
@@ -245,9 +249,9 @@ impl DoOnInterval<GiveUpdaters> {
 }
 impl DoOnInterval<UpdateOnCheck> {
     ///Checks whether or not enough time has elapsed. If so, updates the timer and returns true, else returns false.
-    /// 
+    ///
     ///If the action takes a while, it is reccomended to call `update_timer`
-    pub fn can_do (&mut self) -> bool {
+    pub fn can_do(&mut self) -> bool {
         if self.last_did.elapsed() > self.gap {
             self.last_did = Instant::now();
             true
@@ -257,12 +261,17 @@ impl DoOnInterval<UpdateOnCheck> {
     }
 
     ///Updates the timer.
-    pub fn update_timer (&mut self) {
+    pub fn update_timer(&mut self) {
         self.last_did = Instant::now();
     }
 
-    pub fn to_give_updaters (self) -> DoOnInterval<GiveUpdaters> {
-        DoOnInterval { last_did: self.last_did, gap: self.gap, updater_exists: false, _pd: PhantomData }
+    pub fn to_give_updaters(self) -> DoOnInterval<GiveUpdaters> {
+        DoOnInterval {
+            last_did: self.last_did,
+            gap: self.gap,
+            updater_exists: false,
+            _pd: PhantomData,
+        }
     }
 }
 

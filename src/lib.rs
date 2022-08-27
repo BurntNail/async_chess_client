@@ -12,7 +12,7 @@
     clippy::needless_pass_by_value
 )]
 //! Async Chess Client
-//! 
+//!
 //! Async for people playing not at the same time, not for using tokio
 
 ///Module to hold [`Board`] struct

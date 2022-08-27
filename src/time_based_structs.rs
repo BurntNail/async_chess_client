@@ -99,7 +99,7 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
     }
 
     ///Returns whether or not the list is empty
-    pub fn is_empty (&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         !self.data_ever_written
     }
 }

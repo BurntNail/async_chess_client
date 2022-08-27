@@ -4,15 +4,21 @@ use crate::{
     server_interface::{JSONMove, JSONPieceList},
 };
 use anyhow::{Context, Result};
-use std::{ops::{Index, IndexMut}, fmt::Debug};
+use std::{
+    fmt::Debug,
+    ops::{Index, IndexMut},
+};
 
 ///Utility type to hold a set of [`u32`] coordinates in an `(x, y)` format
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct Coords (u32, u32);
+pub struct Coords(u32, u32);
 
 impl Debug for Coords {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Coords").field("x", &self.0).field("y", &self.1).finish()
+        f.debug_struct("Coords")
+            .field("x", &self.0)
+            .field("y", &self.1)
+            .finish()
     }
 }
 
@@ -20,22 +26,34 @@ impl TryFrom<(i32, i32)> for Coords {
     type Error = anyhow::Error;
 
     fn try_from((x, y): (i32, i32)) -> Result<Self, Self::Error> {
-        if x < 0 { bail!("x < 0")}
-        if x > 7 { bail!("x > 7")}
-        if y < 0 { bail!("y < 0")}
-        if y > 7 { bail!("y > 7")}
+        if x < 0 {
+            bail!("x < 0")
+        }
+        if x > 7 {
+            bail!("x > 7")
+        }
+        if y < 0 {
+            bail!("y < 0")
+        }
+        if y > 7 {
+            bail!("y > 7")
+        }
 
-        Ok(Self (x as u32, y as u32)) //conversion works as all checked above
+        Ok(Self(x as u32, y as u32)) //conversion works as all checked above
     }
 }
 impl TryFrom<(u32, u32)> for Coords {
     type Error = anyhow::Error;
 
     fn try_from((x, y): (u32, u32)) -> Result<Self, Self::Error> {
-        if x > 7 { bail!("x > 7")}
-        if y > 7 { bail!("y > 7")}
+        if x > 7 {
+            bail!("x > 7")
+        }
+        if y > 7 {
+            bail!("y > 7")
+        }
 
-        Ok(Self (x as u32, y as u32)) //conversion works as all checked above
+        Ok(Self(x as u32, y as u32)) //conversion works as all checked above
     }
 }
 impl Into<(u32, u32)> for Coords {
@@ -44,13 +62,13 @@ impl Into<(u32, u32)> for Coords {
     }
 }
 impl Coords {
-    pub fn to_usize (&self) -> usize {
+    pub fn to_usize(&self) -> usize {
         (self.1 * 8 + self.0) as usize
     }
-    pub const fn x (&self) -> u32 {
+    pub const fn x(&self) -> u32 {
         self.0
     }
-    pub const fn y (&self) -> u32 {
+    pub const fn y(&self) -> u32 {
         self.1
     }
 }

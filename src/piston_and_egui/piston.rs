@@ -1,7 +1,7 @@
+use anyhow::Context;
 use async_chess_client::{
     cacher::BOARD_S, error_ext::ErrorExt, time_based_structs::MemoryTimedCacher,
 };
-use anyhow::Context;
 use piston_window::{
     Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent, UpdateEvent,
     Window, WindowSettings,
@@ -43,7 +43,7 @@ pub fn piston_main(pc: PistonConfig) {
 
     while let Some(e) = win.next() {
         let size = win.size();
-        
+
         if time_since_last_frame == 0.0 || cached_dt.is_empty() {
             debug!(fps=%(1.0 / time_since_last_frame), cached_fps=%(1.0 / cached_dt.average_f64()));
         }

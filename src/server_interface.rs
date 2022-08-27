@@ -1,6 +1,4 @@
-use crate::{
-    error_ext::{ErrorExt, ToAnyhowNotErr},
-};
+use crate::error_ext::{ErrorExt, ToAnyhowNotErr};
 use crate::{
     board::{Board, Coords},
     chess::{ChessPiece, ChessPieceKind},

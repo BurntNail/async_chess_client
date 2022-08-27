@@ -7,11 +7,17 @@ use strum::{Display, EnumIter, IntoEnumIterator};
 ///Enum with all of the chess piece kinds
 #[derive(EnumIter, Display, Copy, Clone, PartialEq, Eq)]
 pub enum ChessPieceKind {
+    ///Bishop Piece - move on diagonals
     Bishop,
+    ///Knight piece - dx=1,dy=1
     Knight,
+    ///Pawn - move 2 towards enemy dir on turn 1, 1 on subsequent, take diagonally
     Pawn,
+    ///Queen - [`Bishop`] | [`Rook`]
     Queen,
+    ///King - [`Queen`] but one tile
     King,
+    ///Rook - up,down,left,right
     Rook,
 }
 

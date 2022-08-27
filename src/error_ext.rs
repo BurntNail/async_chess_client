@@ -15,6 +15,7 @@ pub trait ErrorExt<T> {
     fn unwrap_log_error(self) -> T;
 }
 
+///Creates a trait with a function `ae(self) -> anyhow::Result`
 macro_rules! to_anyhow_trait {
     ($($name:ident => $doc:expr),+) => {
         $(

@@ -42,7 +42,7 @@ impl Default for AsyncChessLauncher {
 }
 
 impl AsyncChessLauncher {
-    ///Function to create a new AsyncChessLauncher.
+    ///Function to create a new `AsyncChessLauncher`.
     ///
     ///If `start_uc` is [`Some`], then it uses those values, and if not then it uses the [`AsyncChessLauncher::default`] values - `id: 0, res: 600`
     pub fn new(start_uc: Option<PistonConfig>) -> Self {

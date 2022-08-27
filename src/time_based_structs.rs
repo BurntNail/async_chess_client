@@ -1,7 +1,7 @@
 use crate::error_ext::{ErrorExt, ToAnyhowPoisonErr};
 use anyhow::Context;
 use std::{
-    fmt::Debug,
+    fmt::{Debug, Display},
     mem::MaybeUninit,
     sync::{Arc, Mutex},
 };
@@ -13,11 +13,16 @@ use std::{
 ///Struct to hold a list of items that only get updated on a [`DoOnInterval`], with a circular cache that overwrites the oldest items if there isn't any free space.
 #[derive(Debug)]
 pub struct MemoryTimedCacher<T, const N: usize> {
+    ///Holds all the data
     data: [MaybeUninit<T>; N],
-    first_written: bool,
+    ///Marks whether or not data has been written ever
+    data_ever_written: bool,
+    ///Marks whether or not the array is full of data - useful for after it wraps around
     full: bool,
+    ///Holds the index of the last data written in
     index: usize,
 
+    ///Holds a timer in case we only want to write data on intervals rather than whenever `add` is called
     timer: Option<DoOnInterval>,
 }
 
@@ -26,7 +31,7 @@ impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
         trace!(size=%N, mem_size=%std::mem::size_of::<[Option<T>; N]>(), "Making memcache struct");
         Self {
             data: [MaybeUninit::uninit(); N],
-            first_written: false,
+            data_ever_written: false,
             full: false,
             index: 0,
             timer: Some(DoOnInterval::new(Duration::from_millis(50))),
@@ -50,7 +55,7 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
     /// # Safety
     /// We check that there is data at the index before we drop the data at the old index
     pub fn add(&mut self, t: T) {
-        let can = !self.first_written
+        let can = !self.data_ever_written
             || if let Some(doi) = &mut self.timer {
                 doi.can_do().is_some()
             } else {
@@ -58,10 +63,10 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
             };
 
         if can {
-            if self.first_written {
+            if self.data_ever_written {
                 unsafe { self.data[self.index].assume_init_drop() };
             } else {
-                self.first_written = true;
+                self.data_ever_written = true;
             }
 
             self.data[self.index].write(t);
@@ -78,7 +83,7 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
     /// # Safety
     /// We double check there is data beforehand using the `index` variable and the `full` variable
     pub fn get_all(&self) -> Vec<T> {
-        if !self.first_written {
+        if !self.data_ever_written {
             //no elements yet
             return vec![];
         }
@@ -93,6 +98,7 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
     }
 }
 
+///Creates an average function for an {integer} type
 macro_rules! average_impl {
     ($($t:ty => $name:ident),+) => {
         $(
@@ -117,6 +123,7 @@ macro_rules! average_impl {
         )+
     };
 }
+///Creates an average function for a {float} type
 macro_rules! average_fp_impl {
     ($($t:ty => $name:ident),+) => {
         $(
@@ -150,13 +157,16 @@ average_fp_impl!(f32 => average_f32, f64 => average_f64);
 ///Timer struct to only allow actions to be performed on an interval
 #[derive(Debug)]
 pub struct DoOnInterval {
+    ///When the action was last done
     last_did: Instant,
+    ///Gap between doing actions
     gap: Duration,
+    ///Whether or not an instance of [`DOIUpdate`] exists pointing to this right now
     updater_exists: bool,
 }
 
 impl DoOnInterval {
-    ///Creates a new instance using the duration given
+    ///Creates a new `DoOnInterval` using the duration given
     pub fn new(gap: Duration) -> Self {
         Self {
             last_did: Instant::now() - gap * 2,
@@ -196,8 +206,8 @@ pub struct ScopedTimer {
 }
 
 impl ScopedTimer {
-    ///Function to create a new instance and start the timer
-    pub fn new(msg: impl ToString) -> Self {
+    ///Function to create a new `ScopedTimer` and start the timer
+    pub fn new(msg: impl Display) -> Self {
         Self {
             msg: msg.to_string(),
             start_time: Instant::now(),
@@ -216,7 +226,7 @@ pub struct ScopedToListTimer<'a, const N: usize>(&'a mut MemoryTimedCacher<Durat
 
 impl<'a, const N: usize> ScopedToListTimer<'a, N> {
     #[allow(dead_code)]
-    ///Creates a new instance, and starts the timer
+    ///Creates a new `ScopedToListTimer`, and starts the timer
     pub fn new(t: &'a mut MemoryTimedCacher<Duration, N>) -> Self {
         Self(t, Instant::now())
     }
@@ -235,7 +245,7 @@ pub struct ThreadSafeScopedToListTimer<const N: usize>(
 );
 
 impl<const N: usize> ThreadSafeScopedToListTimer<N> {
-    ///Creates a new instance, and starts the timer
+    ///Creates a new `ThreadSafeScopedToListTimer`, and starts the timer
     pub fn new(t: Arc<Mutex<MemoryTimedCacher<Duration, N>>>) -> Self {
         Self(t, Instant::now())
     }

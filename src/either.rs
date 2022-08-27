@@ -24,11 +24,11 @@ impl<L, R> Either<L, R> {
     }
 }
 
-impl<L> Either<L, L> {
+impl<T> Either<T, T> {
     ///If `L` == `R` then this function will return an `L` - useful for when the [`Either`] side signifies something, but always returns the same type.
     #[allow(dead_code)]
     #[allow(clippy::missing_const_for_fn)] //Cannot be const as destructors cannot be const - Github error 8874
-    pub fn to_normal(self) -> L {
+    pub fn one_type(self) -> T {
         match self {
             Self::Left(l) => l,
             Self::Right(r) => r,

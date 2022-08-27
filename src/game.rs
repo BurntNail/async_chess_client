@@ -27,7 +27,7 @@ pub struct ChessGame {
     refresher: ListRefresher,
 }
 impl ChessGame {
-    ///Create a new ChessGame
+    ///Create a new `ChessGame`
     ///
     /// # Errors
     /// - Can fail if the cacher incorrectly populates
@@ -43,7 +43,7 @@ impl ChessGame {
     }
 
     // #[tracing::instrument(skip(self, ctx, graphics, _device))]
-    ///Renders out the ChessBoard to the screen
+    ///Renders out the `ChessBoard` to the screen
     ///
     /// # Errors
     /// - Can fail if piece sprites aren't found in the [`Cacher`]. However, will still render all other sprites

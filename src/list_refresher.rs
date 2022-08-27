@@ -315,7 +315,7 @@ fn run_loop(
 }
 
 impl ListRefresher {
-    ///Create a new instance, and start up the main thread
+    ///Create a new `ListRefresher`, and start up the main thread
     pub fn new(id: u32) -> Self {
         let (mtw_tx, mtw_rx) = channel();
         let (mtg_tx, mtg_rx) = channel();

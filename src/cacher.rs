@@ -14,7 +14,9 @@ pub const BOARD_S: f64 = 256.0;
 #[derive(Debug)]
 ///Struct to hold a cache of [`G2dTexture`]s
 pub struct Cacher {
+    ///Base path for the assets
     base_path: PathBuf,
+    ///HashMap of paths to textures
     assets: HashMap<String, G2dTexture>,
 }
 

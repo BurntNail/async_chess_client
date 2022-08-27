@@ -8,8 +8,10 @@
     clippy::missing_panics_doc,
     clippy::module_name_repetitions,
     clippy::use_self,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    clippy::needless_pass_by_value
 )]
+//! Async Chess Client
 
 ///Module to hold [`Board`] struct
 mod board;

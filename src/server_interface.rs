@@ -46,7 +46,7 @@ impl JSONPieceList {
     #[allow(clippy::cast_sign_loss)]
     pub fn into_game_list(self) -> Result<Vec<Option<ChessPiece>>> {
         let mut v = vec![None; 8 * 8];
-        for p in self.0.into_iter() {
+        for p in self.0 {
             if p.x < 0 || p.y < 0 || p.x > 7 || p.y > 7 {
                 bail!("Piece out of bounds - ({}, {})", p.x, p.y);
             }
@@ -141,7 +141,7 @@ pub struct JSONMove {
 }
 
 impl JSONMove {
-    ///Creates a new instance
+    ///Creates a new `JSONMove`
     pub const fn new(id: u32, x: u32, y: u32, nx: u32, ny: u32) -> Self {
         Self { id, x, y, nx, ny }
     }

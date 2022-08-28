@@ -9,16 +9,27 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-///Utility type to hold a set of [`i8`] coordinates in an `(x, y)` format
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub struct Coords(i8, i8);
+///Utility type to hold a set of [`u8`] coordinates in an `(x, y)` format. Can also represent a piece which was taken.
+#[derive(Copy, Clone, PartialEq, Eq, Default)]
+pub enum Coords {
+    #[default]
+    Taken,
+    OnBoard(u8, u8) //could use one u8 but cba
+}
 
 impl Debug for Coords {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Coords")
-            .field("x", &self.0)
-            .field("y", &self.1)
+        match self {
+            Coords::Taken => {
+                f.debug_struct("Coords").finish()
+            },
+            Coords::OnBoard(x, y) => {
+                f.debug_struct("Coords")
+            .field("x", x)
+            .field("y", y)
             .finish()
+            },
+        }
     }
 }
 
@@ -27,7 +38,7 @@ impl TryFrom<(i32, i32)> for Coords {
 
     fn try_from((x, y): (i32, i32)) -> Result<Self, Self::Error> {
         if x == -1 && y == -1 {
-            return Ok(Self(-1, -1));
+            return Ok(Self::Taken);
         }
 
         if x < 0 {
@@ -43,7 +54,7 @@ impl TryFrom<(i32, i32)> for Coords {
             bail!("y > 7")
         }
 
-        Ok(Self(x as i8, y as i8)) //conversion works as all checked above
+        Ok(Self::OnBoard(x as u8, y as u8)) //conversion works as all checked above
     }
 }
 impl TryFrom<(u32, u32)> for Coords {
@@ -57,13 +68,13 @@ impl TryFrom<(u32, u32)> for Coords {
             bail!("y > 7")
         }
 
-        Ok(Self(x as i8, y as i8)) //conversion works as all checked above
+        Ok(Self::OnBoard(x as u8, y as u8)) //conversion works as all checked above
     }
 }
 
-impl From<Coords> for (i8, i8) {
+impl From<Coords> for Option<(u8, u8)> {
     fn from(c: Coords) -> Self {
-        (c.0, c.1)
+        c.to_option()
     }
 }
 
@@ -71,21 +82,38 @@ impl Coords {
     ///Provides an index with which to index a 1D array using the 2D coords, assuming there are 8 rows per column
     #[must_use]
     pub fn to_usize(&self) -> Option<usize> {
-        if self.0 == -1 || self.1 == -1 {
-            None
-        } else {
-            Some((self.1 * 8 + self.0) as usize)
+        match self {
+            Coords::Taken => None,
+            Coords::OnBoard(x, y) => Some((y * 8 + x) as usize),
         }
     }
     ///Provides the X part of the coordinate
     #[must_use]
-    pub const fn x(&self) -> i8 {
-        self.0
+    pub fn x(&self) -> Option<u8> {
+        self.to_option().map(|(x, _)| x)
     }
     ///Provides the Y part of the coordinate
     #[must_use]
-    pub const fn y(&self) -> i8 {
-        self.1
+    pub fn y(&self) -> Option<u8> {
+        self.to_option().map(|(_, y)| y)
+    }
+
+    ///Provides a utility function for turning `Coords` to an `Option<(u8, u8)>`
+    pub fn to_option (&self) -> Option<(u8, u8)> {
+        match *self {
+            Coords::Taken => None,
+            Coords::OnBoard(x, y) => Some((x, y))
+        }
+    }
+    
+    ///Utility function for whether or not it is taken
+    pub fn is_taken(&self) -> bool {
+        matches!(self, Coords::Taken)
+    }
+
+    ///Utility function for whether or not it is on the board
+    pub fn is_on_board (&self) -> bool {
+        matches!(self, Coords::OnBoard(_, _))
     }
 }
 
@@ -187,10 +215,9 @@ impl Board {
         ));
 
         let old_current = std::mem::take(&mut self[m.current_coords()]);
-        let nu = &mut self[m.new_coords()];
-        *nu = old_current;
+        self[m.new_coords()] = old_current;
 
-        if let Some(p) = nu {
+        if let Some(p) = &mut self[m.new_coords()] {
             //rather than unwrap to get a mutable reference
             if (p.is_white && m.ny == 0) || (!p.is_white && m.ny == 7) {
                 p.kind = ChessPieceKind::Queen;

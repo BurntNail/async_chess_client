@@ -20,9 +20,9 @@ pub struct ChessGame {
     ///The Chess Board
     board: Board,
     ///The coordinates of the piece last pressed. Used for selected sprite location.
-    last_pressed: Option<Coords>,
+    last_pressed: Coords,
     ///The coordinates before - useful for rolling back invalid moves.
-    ex_last_pressed: Option<Coords>,
+    ex_last_pressed: Coords,
     ///The refresher for making server requests
     refresher: ListRefresher,
 }
@@ -37,8 +37,8 @@ impl ChessGame {
             cache: Cacher::new(win).context("making cacher")?,
             board: Board::default(),
             refresher: ListRefresher::new(id),
-            last_pressed: None,
-            ex_last_pressed: None,
+            last_pressed: Coords::Taken,
+            ex_last_pressed: Coords::Taken,
         })
     }
 
@@ -115,8 +115,8 @@ impl ChessGame {
                             let mut draw =
                                 || image.draw(tex, &DrawState::default(), trans, graphics);
 
-                            if let Some((lp_x, lp_y)) = self.last_pressed.map(Into::into) {
-                                if lp_x == col as i8 && lp_y == row as i8 {
+                            if let Some((lp_x, lp_y)) = self.last_pressed.to_option() {
+                                if lp_x == col as u8 && lp_y == row as u8 {
                                     let tx = self.cache.get("selected.png").context("Unable to find \"selected.png\" - check your assets folder").unwrap_log_error();
                                     image.draw(tx, &DrawState::default(), trans, graphics);
                                 } else {
@@ -171,8 +171,8 @@ impl ChessGame {
 
         {
             let (raw_x, raw_y) = raw_mouse_coords;
-            if let Some(lp) = self.last_pressed {
-                if let Some(piece) = self.board[lp] {
+            if self.last_pressed.is_on_board() {
+                if let Some(piece) = self.board[self.last_pressed] {
                     match self.cache.get(&piece.to_file_name()) {
                         Ok(tex) => {
                             let s = TILE_S * window_scale / 1.5;
@@ -184,12 +184,12 @@ impl ChessGame {
                             errs.push(e.context(format!(
                                 "Cacher doesn't contain: {} at ({:?} floating)",
                                 piece.to_file_name(),
-                                lp
+                                self.last_pressed
                             )));
                         }
                     }
                 } else {
-                    self.last_pressed = None;
+                    self.last_pressed = Coords::Taken;
                 }
             }
         }
@@ -208,17 +208,17 @@ impl ChessGame {
     #[tracing::instrument(skip(self))]
     pub fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) -> Result<()> {
         match std::mem::take(&mut self.last_pressed) {
-            None => {
+            Coords::Taken => {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
                 let lp_y = to_board_coord(mouse_pos.1, mult);
 
                 let coord = (lp_x, lp_y).try_into()?;
 
                 if self.board.piece_exists_at_location(coord) {
-                    self.last_pressed = Some(coord);
+                    self.last_pressed = coord;
                 }
             }
-            Some(lp) => {
+            Coords::OnBoard(x, y) => {
                 //Deal with second press
                 let current_press = {
                     let lp_x = to_board_coord(mouse_pos.0, mult);
@@ -226,19 +226,19 @@ impl ChessGame {
                     (lp_x, lp_y)
                 };
 
-                info!(last_pos=?lp, new_pos=?current_press, "Starting moving");
+                info!(last_pos=?(x, y), new_pos=?current_press, "Starting moving");
 
                 self.refresher
                     .send_msg(MessageToWorker::MakeMove(JSONMove::new(
                         self.id,
-                        lp.x().try_into().unwrap_log_error(),
-                        lp.y().try_into().unwrap_log_error(),
+                        x as u32,
+                        y as u32,
                         current_press.0,
                         current_press.1,
                     )))
                     .context("sending a message to the worker re moving")?;
 
-                self.ex_last_pressed = Some(lp);
+                self.ex_last_pressed = Coords::OnBoard(x, y)
             }
         }
 
@@ -313,8 +313,8 @@ impl ChessGame {
 
     ///Clears the mouse input - means that a different piece can be selected.
     pub fn clear_mouse_input(&mut self) {
-        self.last_pressed = None;
-        self.ex_last_pressed = None;
+        self.last_pressed = Coords::Taken;
+        self.ex_last_pressed = Coords::Taken;
     }
 }
 

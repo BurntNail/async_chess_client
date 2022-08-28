@@ -231,6 +231,7 @@ impl DoOnInterval<GiveUpdaters> {
     }
 
     ///Turns a [`GiveUpdaters`] to an [`UpdateOnCheck`]. Can return the original [`GiveUpdaters`] if an updater currently exists
+    #[must_use]
     pub fn to_update_on_check(
         self,
     ) -> Either<DoOnInterval<GiveUpdaters>, DoOnInterval<UpdateOnCheck>> {
@@ -265,6 +266,8 @@ impl DoOnInterval<UpdateOnCheck> {
         self.last_did = Instant::now();
     }
 
+    ///Turns a [`UpdateOnCheck`] to a [`GiveUpdaters`]
+    #[must_use]
     pub fn to_give_updaters(self) -> DoOnInterval<GiveUpdaters> {
         DoOnInterval {
             last_did: self.last_did,

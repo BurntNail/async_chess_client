@@ -39,6 +39,7 @@ impl TryFrom<(i32, i32)> for Coords {
             bail!("y > 7")
         }
 
+        #[allow(clippy::cast_sign_loss)]
         Ok(Self(x as u32, y as u32)) //conversion works as all checked above
     }
 }
@@ -56,18 +57,26 @@ impl TryFrom<(u32, u32)> for Coords {
         Ok(Self(x as u32, y as u32)) //conversion works as all checked above
     }
 }
-impl Into<(u32, u32)> for Coords {
-    fn into(self) -> (u32, u32) {
-        (self.0, self.1)
+
+impl From<Coords> for (u32, u32) {
+    fn from(c: Coords) -> Self {
+        (c.0, c.1)
     }
 }
+
 impl Coords {
+    ///Provides an index with which to index a 1D array using the 2D coords, assuming there are 8 rows per column
+    #[must_use]
     pub fn to_usize(&self) -> usize {
         (self.1 * 8 + self.0) as usize
     }
+    ///Provides the X part of the coordinate
+    #[must_use]
     pub const fn x(&self) -> u32 {
         self.0
     }
+    ///Provides the Y part of the coordinate
+    #[must_use]
     pub const fn y(&self) -> u32 {
         self.1
     }

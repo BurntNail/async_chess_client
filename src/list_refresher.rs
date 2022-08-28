@@ -87,7 +87,8 @@ fn run_loop(
     mtg_tx: Sender<MessageToGame>,
     id: u32,
 ) -> Result<()> {
-    let inflight = Arc::new(Mutex::new(()));
+    let change_inflight = Arc::new(Mutex::new(()));
+    let req_inflight = Arc::new(Mutex::new(()));
     let client = ClientBuilder::default()
         .user_agent("JackyBoi/AsyncChess")
         .build()
@@ -150,7 +151,7 @@ fn run_loop(
                 };
 
                 let (inflight, reqwest_error_at_last_refresh, mtg_tx, client, request_timer) = (
-                    inflight.clone(),
+                    req_inflight.clone(),
                     reqwest_error_at_last_refresh.clone(),
                     mtg_tx.clone(),
                     client.clone(),
@@ -217,9 +218,15 @@ fn run_loop(
                 }));
             }
             MessageToWorker::RestartBoard => {
-                let (client, rt) = (client.clone(), request_timer.clone());
+                let (client, rt, inflight) = (client.clone(), request_timer.clone(), change_inflight.clone());
                 //not added to the handles list because I don't care about the results
                 std::thread::spawn(move || {
+                    let _lock = inflight
+                    .lock()
+                    .ae()
+                    .context("locking inflight mutex")
+                    .unwrap_log_error();
+
                     let _st = ThreadSafeScopedToListTimer::new(rt);
 
                     match client
@@ -238,8 +245,15 @@ fn run_loop(
                 });
             }
             MessageToWorker::MakeMove(m) => {
-                let (mtg_tx, client, rt) = (mtg_tx.clone(), client.clone(), request_timer.clone());
+                let (mtg_tx, client, rt, inflight) = (mtg_tx.clone(), client.clone(), request_timer.clone(), change_inflight.clone());
                 handles.push(std::thread::spawn(move || {
+                    let _lock = inflight
+                    .lock()
+                    .ae()
+                    .context("locking inflight mutex")
+                    .unwrap_log_error();
+
+
                     let _st = ThreadSafeScopedToListTimer::new(rt);
 
                     mtg_tx
@@ -287,6 +301,13 @@ fn run_loop(
                 }));
             }
             MessageToWorker::InvalidateKill => {
+                let _lock = req_inflight
+                .lock()
+                .ae()
+                .context("locking inflight mutex")
+                .unwrap_log_error();
+
+
                 info!("InvalidateKill msg sending");
 
                 let rsp = client

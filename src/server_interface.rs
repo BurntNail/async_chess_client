@@ -43,6 +43,11 @@ impl JSONPieceList {
     pub fn into_game_list(self) -> Result<[Option<ChessPiece>; 64]> {
         let mut v = [None; 8 * 8];
         for p in self.0 {
+            if p.x == -1 && p.y == -1 {
+                continue; //I don't need to display taken pieces... yet
+                          //TODO: display taken pieces
+            }
+
             let current = v
                 .get_mut(Coords::try_from((p.x, p.y))?.to_usize())
                 .ae()

@@ -44,7 +44,6 @@ impl JSONPieceList {
         let mut v = [None; 8 * 8];
         let mut v2 = Vec::with_capacity(64);
         for p in self.0 {
-
             let piece = ChessPiece {
                 kind: ChessPieceKind::try_from(p.kind)?,
                 is_white: p.is_white,
@@ -53,20 +52,18 @@ impl JSONPieceList {
 
             if let Some(us) = coords.to_usize() {
                 let current = v
-                .get_mut(us)
-                .ae()
-                .context("getting index from vector in into_game_list")?;
+                    .get_mut(us)
+                    .ae()
+                    .context("getting index from vector in into_game_list")?;
 
-            if current.is_some() {
-                bail!("Collision at ({}, {})", p.x, p.y);
-            }
+                if current.is_some() {
+                    bail!("Collision at ({}, {})", p.x, p.y);
+                }
 
-            *current = Some(piece);
-
+                *current = Some(piece);
             } else {
                 v2.push(piece);
             }
-
         }
 
         Ok((v, v2))

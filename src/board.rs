@@ -10,25 +10,26 @@ use std::{
 };
 
 ///Utility type to hold a set of [`u8`] coordinates in an `(x, y)` format. Can also represent a piece which was taken.
+///
+/// (0, 0) is at the top left, with y counting the rows, and x counting the columns
 #[derive(Copy, Clone, PartialEq, Eq, Default)]
 pub enum Coords {
+    ///The coordinate is currently off the board, or a taken piece
     #[default]
-    Taken,
-    OnBoard(u8, u8) //could use one u8 but cba
+    OffBoard,
+    ///The coordinate is currently on the board at these coordinates.
+    OnBoard(u8, u8), //could use one u8 but cba
 }
 
 impl Debug for Coords {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Coords::Taken => {
-                f.debug_struct("Coords").finish()
-            },
-            Coords::OnBoard(x, y) => {
-                f.debug_struct("Coords")
-            .field("x", x)
-            .field("y", y)
-            .finish()
-            },
+            Coords::OffBoard => f.debug_struct("Coords").finish(),
+            Coords::OnBoard(x, y) => f
+                .debug_struct("Coords")
+                .field("x", x)
+                .field("y", y)
+                .finish(),
         }
     }
 }
@@ -38,7 +39,7 @@ impl TryFrom<(i32, i32)> for Coords {
 
     fn try_from((x, y): (i32, i32)) -> Result<Self, Self::Error> {
         if x == -1 && y == -1 {
-            return Ok(Self::Taken);
+            return Ok(Self::OffBoard);
         }
 
         if x < 0 {
@@ -83,7 +84,7 @@ impl Coords {
     #[must_use]
     pub fn to_usize(&self) -> Option<usize> {
         match self {
-            Coords::Taken => None,
+            Coords::OffBoard => None,
             Coords::OnBoard(x, y) => Some((y * 8 + x) as usize),
         }
     }
@@ -99,20 +100,20 @@ impl Coords {
     }
 
     ///Provides a utility function for turning `Coords` to an `Option<(u8, u8)>`
-    pub fn to_option (&self) -> Option<(u8, u8)> {
+    pub fn to_option(&self) -> Option<(u8, u8)> {
         match *self {
-            Coords::Taken => None,
-            Coords::OnBoard(x, y) => Some((x, y))
+            Coords::OffBoard => None,
+            Coords::OnBoard(x, y) => Some((x, y)),
         }
     }
-    
+
     ///Utility function for whether or not it is taken
     pub fn is_taken(&self) -> bool {
-        matches!(self, Coords::Taken)
+        matches!(self, Coords::OffBoard)
     }
 
     ///Utility function for whether or not it is on the board
-    pub fn is_on_board (&self) -> bool {
+    pub fn is_on_board(&self) -> bool {
         matches!(self, Coords::OnBoard(_, _))
     }
 }
@@ -152,7 +153,13 @@ impl Index<Coords> for Board {
     /// Can panic if the coords are out-of-bounds, but very unlikely
     fn index(&self, index: Coords) -> &Self::Output {
         self.pieces
-            .get(index.to_usize().ae().context("index piece").unwrap_log_error())
+            .get(
+                index
+                    .to_usize()
+                    .ae()
+                    .context("index piece")
+                    .unwrap_log_error(),
+            )
             .ae()
             .with_context(|| format!("Getting position from {index:?}"))
             .unwrap_log_error()
@@ -166,7 +173,13 @@ impl IndexMut<Coords> for Board {
     /// Can panic if the coords are out-of-bounds, but very unlikely
     fn index_mut(&mut self, index: Coords) -> &mut Self::Output {
         self.pieces
-            .get_mut(index.to_usize().ae().context("index piece").unwrap_log_error())
+            .get_mut(
+                index
+                    .to_usize()
+                    .ae()
+                    .context("index piece")
+                    .unwrap_log_error(),
+            )
             .ae()
             .with_context(|| format!("Getting position mutably from {index:?}"))
             .unwrap_log_error()
@@ -243,12 +256,15 @@ impl Board {
     }
 
     ///Clears out the cache
-    /// 
+    ///
     /// # Panics
     /// Can panic if there wasn't a move made beforehand
     pub fn move_worked(&mut self, taken: bool) {
         if taken {
-            let (_, p, _) = std::mem::take(&mut self.previous).ae().context("taking previous").unwrap_log_error();
+            let (_, p, _) = std::mem::take(&mut self.previous)
+                .ae()
+                .context("taking previous")
+                .unwrap_log_error();
             if let Some(p) = p {
                 self.taken.push(p);
             }
@@ -256,8 +272,6 @@ impl Board {
             self.previous = None;
         }
     }
-
-
 
     ///Checks whether or not a piece exists at a given set of coordinates
     #[must_use]
@@ -271,7 +285,7 @@ impl Board {
 
     ///Gets a clone of all the pieces which have been taken
     #[must_use]
-    pub fn get_taken (&self) -> Vec<ChessPiece> {
+    pub fn get_taken(&self) -> Vec<ChessPiece> {
         self.taken.clone()
     }
 }

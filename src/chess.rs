@@ -1,11 +1,11 @@
+use anyhow::Context;
 use std::{
     error::Error as SError,
     fmt::{Debug, Formatter},
 };
-use anyhow::Context;
 use strum::{Display, EnumIter, IntoEnumIterator};
 
-use crate::error_ext::{ToAnyhowNotErr, ErrorExt};
+use crate::error_ext::{ErrorExt, ToAnyhowNotErr};
 
 ///Enum with all of the chess piece kinds
 #[derive(EnumIter, Display, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -105,10 +105,13 @@ impl PartialOrd for ChessPiece {
             Some(core::cmp::Ordering::Equal) => self.kind.partial_cmp(&other.kind),
             ord => return ord,
         }
-    }    
+    }
 }
 impl Ord for ChessPiece {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).ae().with_context(|| format!("comparing {self:?} to {other:?}")).unwrap_log_error()
+        self.partial_cmp(other)
+            .ae()
+            .with_context(|| format!("comparing {self:?} to {other:?}"))
+            .unwrap_log_error()
     }
 }

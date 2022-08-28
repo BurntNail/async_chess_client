@@ -2,7 +2,7 @@ use crate::piston::{mp_valid, to_board_pixels};
 use anyhow::{Context as _, Result};
 use async_chess_client::{
     board::{Board, Coords},
-    cacher::{Cacher, TILE_S, BOARD_S},
+    cacher::{Cacher, BOARD_S, TILE_S},
     error_ext::{ErrorExt, ToAnyhowErr},
     list_refresher::{BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome},
     server_interface::{no_connection_list, JSONMove},
@@ -37,8 +37,8 @@ impl ChessGame {
             cache: Cacher::new(win).context("making cacher")?,
             board: Board::default(),
             refresher: ListRefresher::new(id),
-            last_pressed: Coords::Taken,
-            ex_last_pressed: Coords::Taken,
+            last_pressed: Coords::OffBoard,
+            ex_last_pressed: Coords::OffBoard,
         })
     }
 
@@ -133,13 +133,13 @@ impl ChessGame {
 
         {
             const TAKEN_TILE_SIZE: f64 = TILE_S * 0.75;
-            const START_Y: f64 = (BOARD_S - (TAKEN_TILE_SIZE*16.0)) / 2.0; //16 pieces
+            const START_Y: f64 = (BOARD_S - (TAKEN_TILE_SIZE * 16.0)) / 2.0; //16 pieces
 
             let mut pieces = self.board.get_taken();
             pieces.sort();
 
             let white_trans = t.trans(15.0 * window_scale, START_Y * window_scale);
-            let black_trans = t.trans((216.0 + 15.0) * window_scale, START_Y * window_scale); 
+            let black_trans = t.trans((216.0 + 15.0) * window_scale, START_Y * window_scale);
             //TODO: remove all *.0s and use constants with division
             //TODO: move out all parts of rendering to their own methods
 
@@ -148,24 +148,28 @@ impl ChessGame {
 
             for p in pieces {
                 match self.cache.get(&p.to_file_name()) {
-                    Err(e) => errs.push(e.context(format!(
-                        "cacher doesn't contain: {:?}",
-                        p.to_file_name()
-                    ))),
+                    Err(e) => errs
+                        .push(e.context(format!("cacher doesn't contain: {:?}", p.to_file_name()))),
                     Ok(tex) => {
                         if p.is_white {
-                            let img = Image::new().rect(square(0.0, white_dy * window_scale, TAKEN_TILE_SIZE * window_scale));
+                            let img = Image::new().rect(square(
+                                0.0,
+                                white_dy * window_scale,
+                                TAKEN_TILE_SIZE * window_scale,
+                            ));
                             white_dy += TAKEN_TILE_SIZE;
                             img.draw(tex, &DrawState::default(), white_trans, graphics);
                         } else {
-                            let img = Image::new().rect(square(0.0, black_dy * window_scale, TAKEN_TILE_SIZE * window_scale));
+                            let img = Image::new().rect(square(
+                                0.0,
+                                black_dy * window_scale,
+                                TAKEN_TILE_SIZE * window_scale,
+                            ));
                             black_dy += TAKEN_TILE_SIZE;
                             img.draw(tex, &DrawState::default(), black_trans, graphics);
                         }
                     }
                 }
-
-                
             }
         }
 
@@ -189,7 +193,7 @@ impl ChessGame {
                         }
                     }
                 } else {
-                    self.last_pressed = Coords::Taken;
+                    self.last_pressed = Coords::OffBoard;
                 }
             }
         }
@@ -208,7 +212,7 @@ impl ChessGame {
     #[tracing::instrument(skip(self))]
     pub fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) -> Result<()> {
         match std::mem::take(&mut self.last_pressed) {
-            Coords::Taken => {
+            Coords::OffBoard => {
                 let lp_x = to_board_coord(mouse_pos.0, mult);
                 let lp_y = to_board_coord(mouse_pos.1, mult);
 
@@ -313,8 +317,8 @@ impl ChessGame {
 
     ///Clears the mouse input - means that a different piece can be selected.
     pub fn clear_mouse_input(&mut self) {
-        self.last_pressed = Coords::Taken;
-        self.ex_last_pressed = Coords::Taken;
+        self.last_pressed = Coords::OffBoard;
+        self.ex_last_pressed = Coords::OffBoard;
     }
 }
 

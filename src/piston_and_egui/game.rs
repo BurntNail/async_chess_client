@@ -116,7 +116,7 @@ impl ChessGame {
                                 || image.draw(tex, &DrawState::default(), trans, graphics);
 
                             if let Some((lp_x, lp_y)) = self.last_pressed.map(Into::into) {
-                                if lp_x == col as u32 && lp_y == row as u32 {
+                                if lp_x == col as i8 && lp_y == row as i8 {
                                     let tx = self.cache.get("selected.png").context("Unable to find \"selected.png\" - check your assets folder").unwrap_log_error();
                                     image.draw(tx, &DrawState::default(), trans, graphics);
                                 } else {
@@ -193,8 +193,8 @@ impl ChessGame {
                 self.refresher
                     .send_msg(MessageToWorker::MakeMove(JSONMove::new(
                         self.id,
-                        lp.x(),
-                        lp.y(),
+                        lp.x().try_into().unwrap_log_error(),
+                        lp.y().try_into().unwrap_log_error(),
                         current_press.0,
                         current_press.1,
                     )))
@@ -223,7 +223,7 @@ impl ChessGame {
                         self.board.make_move(m);
                     }
                     BoardMessage::Move(outcome) => match outcome {
-                        MoveOutcome::Worked => self.board.move_worked(),
+                        MoveOutcome::Worked(taken) => self.board.move_worked(taken),
                         MoveOutcome::Invalid | MoveOutcome::ReqwestFailed => {
                             self.board.undo_move();
                             info!("Resetting pieces");

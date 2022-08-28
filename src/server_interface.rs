@@ -40,16 +40,20 @@ impl JSONPieceList {
     /// # Panics
     /// Has the ability to panic, but if the server follows specs, should be fine
     #[allow(clippy::cast_sign_loss)]
-    pub fn into_game_list(self) -> Result<[Option<ChessPiece>; 64]> {
+    pub fn into_game_list(self) -> Result<([Option<ChessPiece>; 64], Vec<ChessPiece>)> {
         let mut v = [None; 8 * 8];
+        let mut v2 = Vec::with_capacity(64);
         for p in self.0 {
-            if p.x == -1 && p.y == -1 {
-                continue; //I don't need to display taken pieces... yet
-                          //TODO: display taken pieces
-            }
 
-            let current = v
-                .get_mut(Coords::try_from((p.x, p.y))?.to_usize())
+            let piece = ChessPiece {
+                kind: ChessPieceKind::try_from(p.kind)?,
+                is_white: p.is_white,
+            };
+            let coords = Coords::try_from((p.x, p.y))?;
+
+            if let Some(us) = coords.to_usize() {
+                let current = v
+                .get_mut(us)
                 .ae()
                 .context("getting index from vector in into_game_list")?;
 
@@ -57,13 +61,15 @@ impl JSONPieceList {
                 bail!("Collision at ({}, {})", p.x, p.y);
             }
 
-            *current = Some(ChessPiece {
-                kind: ChessPieceKind::try_from(p.kind)?,
-                is_white: p.is_white,
-            });
+            *current = Some(piece);
+
+            } else {
+                v2.push(piece);
+            }
+
         }
 
-        Ok(v)
+        Ok((v, v2))
     }
 }
 

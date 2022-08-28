@@ -56,8 +56,8 @@ pub enum BoardMessage {
 ///The outcome of a move from the server
 #[derive(Debug)]
 pub enum MoveOutcome {
-    ///The move worked and was successful
-    Worked,
+    ///The move worked and was successful. Bool signifies whether or not a piece was taken
+    Worked(bool),
     ///The move is invalid, and should be undone
     Invalid,
     ///The request from `reqwest` failed
@@ -277,8 +277,10 @@ fn run_loop(
                     let outcome = match rsp {
                         Ok(rsp) => match rsp.error_for_status() {
                             Ok(rsp) => {
-                                info!(update=?rsp.text(), "Update from server on moving");
-                                MoveOutcome::Worked
+                                let txt = rsp.text();
+                                info!(update=?txt, "Update from server on moving");
+                                let taken = txt.map_or(false, |txt| !txt.contains("not"));
+                                MoveOutcome::Worked(taken)
                             }
                             Err(e) => {
                                 if let Some(sc) = e.status() {

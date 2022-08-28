@@ -1,8 +1,11 @@
-use crate::piston::{mp_valid, to_board_pixels};
+use crate::{
+    piston::{mp_valid, to_board_pixels},
+    pixel_size_consts::{BOARD_S, BOARD_TILE_S, LEFT_BOUND_PADDING, RIGHT_BOUND, TILE_S},
+};
 use anyhow::{Context as _, Result};
 use async_chess_client::{
     board::{Board, Coords},
-    cacher::{Cacher, BOARD_S, TILE_S},
+    cacher::Cacher,
     error_ext::{ErrorExt, ToAnyhowErr},
     list_refresher::{BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome},
     server_interface::{no_connection_list, JSONMove},
@@ -67,7 +70,7 @@ impl ChessGame {
         clear([0.0; 4], graphics);
         let t = ctx.transform;
         {
-            let image = Image::new().rect(square(0.0, 0.0, 256.0 * window_scale));
+            let image = Image::new().rect(square(0.0, 0.0, BOARD_S * window_scale));
             let tex = self
                 .cache
                 .get("board_alt.png")
@@ -76,13 +79,16 @@ impl ChessGame {
             image.draw(tex, &DrawState::default(), t, graphics);
         }
 
-        let trans = t.trans(41.0 * window_scale, 41.0 * window_scale);
+        let trans = t.trans(
+            LEFT_BOUND_PADDING * window_scale,
+            LEFT_BOUND_PADDING * window_scale,
+        );
 
         {
             if let Some((px, py)) = board_coords {
-                let x = f64::from(px) * (TILE_S + 2.0) * window_scale;
-                let y = f64::from(py) * (TILE_S + 2.0) * window_scale;
-                let image = Image::new().rect(square(x, y, 20.0 * window_scale));
+                let x = f64::from(px) * BOARD_TILE_S * window_scale;
+                let y = f64::from(py) * BOARD_TILE_S * window_scale;
+                let image = Image::new().rect(square(x, y, TILE_S * window_scale));
 
                 image.draw(
                     self.cache
@@ -108,8 +114,8 @@ impl ChessGame {
                             )));
                         }
                         Ok(tex) => {
-                            let x = f64::from(col) * (TILE_S + 2.0) * window_scale;
-                            let y = f64::from(row) * (TILE_S + 2.0) * window_scale;
+                            let x = f64::from(col) * BOARD_TILE_S * window_scale;
+                            let y = f64::from(row) * BOARD_TILE_S * window_scale;
                             let image = Image::new().rect(square(x, y, TILE_S * window_scale));
 
                             let mut draw =
@@ -138,8 +144,11 @@ impl ChessGame {
             let mut pieces = self.board.get_taken();
             pieces.sort();
 
-            let white_trans = t.trans(15.0 * window_scale, START_Y * window_scale);
-            let black_trans = t.trans((216.0 + 15.0) * window_scale, START_Y * window_scale);
+            let white_trans = t.trans(TAKEN_TILE_SIZE * window_scale, START_Y * window_scale);
+            let black_trans = t.trans(
+                (RIGHT_BOUND + TAKEN_TILE_SIZE) * window_scale,
+                START_Y * window_scale,
+            );
             //TODO: remove all *.0s and use constants with division
             //TODO: move out all parts of rendering to their own methods
 
@@ -325,5 +334,5 @@ impl ChessGame {
 ///Converts a pixel to a board coordinate, assuming that the mouse cursor is on the board
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn to_board_coord(p: f64, mult: f64) -> u32 {
-    (p / ((TILE_S + 2.0) * mult)).floor() as u32
+    (p / (BOARD_TILE_S * mult)).floor() as u32
 }

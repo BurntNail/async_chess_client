@@ -66,7 +66,7 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
                 true
             };
 
-        if can {        
+        if can {
             if self.data_ever_written {
                 unsafe { self.data[self.index].assume_init_drop() };
             } else {

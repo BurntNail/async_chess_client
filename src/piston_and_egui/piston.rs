@@ -1,14 +1,14 @@
-use anyhow::Context;
-use async_chess_client::{
-    cacher::BOARD_S, error_ext::ErrorExt, time_based_structs::MemoryTimedCacher,
+use crate::{
+    game::ChessGame,
+    pixel_size_consts::{BOARD_S, LEFT_BOUND, RIGHT_BOUND},
 };
+use anyhow::Context;
+use async_chess_client::{error_ext::ErrorExt, time_based_structs::MemoryTimedCacher};
 use piston_window::{
     Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent, UpdateEvent,
     Window, WindowSettings,
 };
 use serde::{Deserialize, Serialize};
-
-use crate::game::ChessGame;
 
 ///Configuration for the Piston window
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -108,10 +108,10 @@ pub fn piston_main(pc: PistonConfig) {
 ///
 /// Must always be called BEFORE [`to_board_pixels`]
 pub fn mp_valid(raw_mp: (f64, f64), window_scale: f64) -> bool {
-    raw_mp.0 > 40.0 * window_scale
-        && raw_mp.0 < 216.0 * window_scale
-        && raw_mp.1 > 40.0 * window_scale
-        && raw_mp.1 < 216.0 * window_scale
+    raw_mp.0 > LEFT_BOUND * window_scale
+        && raw_mp.0 < RIGHT_BOUND * window_scale
+        && raw_mp.1 > LEFT_BOUND * window_scale
+        && raw_mp.1 < RIGHT_BOUND * window_scale
 }
 
 ///Converts window pixels to board pixels
@@ -119,7 +119,7 @@ pub fn mp_valid(raw_mp: (f64, f64), window_scale: f64) -> bool {
 /// Must always be called AFTER [`mp_valid`]
 pub fn to_board_pixels(raw_mouse_pos: (f64, f64), window_scale: f64) -> (f64, f64) {
     (
-        raw_mouse_pos.0 - 40.0 * window_scale,
-        raw_mouse_pos.1 - 40.0 * window_scale,
+        raw_mouse_pos.0 - LEFT_BOUND * window_scale,
+        raw_mouse_pos.1 - LEFT_BOUND * window_scale,
     )
 }

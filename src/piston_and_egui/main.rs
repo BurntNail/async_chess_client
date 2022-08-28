@@ -1,3 +1,17 @@
+#![warn(
+    clippy::all,
+    clippy::pedantic,
+    clippy::derivable_impls,
+    clippy::missing_docs_in_private_items
+)]
+#![allow(
+    clippy::missing_panics_doc,
+    clippy::module_name_repetitions,
+    clippy::use_self,
+    clippy::too_many_lines,
+    clippy::needless_pass_by_value
+)]
+
 use crate::{egui_launcher::egui_main, piston::piston_main};
 use anyhow::{Context, Result};
 use async_chess_client::error_ext::{ErrorExt, ToAnyhowNotErr};
@@ -19,6 +33,25 @@ mod egui_launcher;
 mod game;
 ///Module to hold windowing/rendering logic for the [`ChessGame`]
 mod piston;
+///Module to hold useful constants for pixel sizes
+pub mod pixel_size_consts {
+    ///The size in pixels of the length/width of a chess piece sprite
+    pub const TILE_S: f64 = 20.0;
+    ///The size in pixels of the length/width of the chess board sprite
+    pub const BOARD_S: f64 = 256.0;
+
+    ///The padding in pixels around each tile
+    pub const PADDING: f64 = 1.0;
+
+    ///The size in pixles of a board tile including padding
+    pub const BOARD_TILE_S: f64 = TILE_S + (2.0 * PADDING);
+    ///The top/left bounds of the board excl padding
+    pub const LEFT_BOUND: f64 = (BOARD_S - (BOARD_TILE_S * 8.0)) / 2.0;
+    ///The btm/right bounds of the board excl padding
+    pub const RIGHT_BOUND: f64 = BOARD_S - LEFT_BOUND;
+    ///The top/left bounds [`LEFT_BOUND`] incl padding
+    pub const LEFT_BOUND_PADDING: f64 = LEFT_BOUND + PADDING;
+}
 
 #[macro_use]
 extern crate tracing;

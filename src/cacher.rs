@@ -9,11 +9,6 @@ use piston_window::{
 };
 use std::{collections::HashMap, path::PathBuf};
 
-///The size in pixels of the length/width of a chess piece sprite
-pub const TILE_S: f64 = 20.0;
-///The size in pixels of the length/width of the chess board sprite
-pub const BOARD_S: f64 = 256.0;
-
 ///Struct to hold a cache of [`G2dTexture`]s
 pub struct Cacher {
     ///Base path for the assets

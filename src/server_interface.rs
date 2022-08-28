@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::{Context, Error, Result};
 use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
 
 ///Unit struct to hold a vector of [`JSONPiece`]s.
 #[derive(Deserialize, Debug, Default)]
@@ -82,7 +83,7 @@ pub fn no_connection_list() -> Board {
         is_white: (x + y) % 2 == 1, //why not
         kind: "rook".into(),
     };
-    let list = vec![
+    let mut list = vec![
         p(0, 0),
         p(2, 0),
         p(5, 0),
@@ -113,6 +114,22 @@ pub fn no_connection_list() -> Board {
         p(5, 7),
         p(7, 7),
     ];
+    for _ in 0..2 {
+        for kind in ChessPieceKind::iter() {
+            list.push(JSONPiece {
+                x: -1,
+                y: -1,
+                kind: kind.to_string(),
+                is_white: false,
+            });
+            list.push(JSONPiece {
+                x: -1,
+                y: -1,
+                kind: kind.to_string(),
+                is_white: true,
+            });
+        }
+    }
 
     Board::new_json(JSONPieceList(list))
         .context("turning ncl to board")

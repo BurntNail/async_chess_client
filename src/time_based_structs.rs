@@ -1,7 +1,12 @@
-use crate::error_ext::{ErrorExt, ToAnyhowPoisonErr};
+use crate::{
+    crate_private::Sealed,
+    either::Either,
+    error_ext::{ErrorExt, ToAnyhowPoisonErr},
+};
 use anyhow::Context;
 use std::{
     fmt::{Debug, Display},
+    marker::PhantomData,
     mem::MaybeUninit,
     ops::{AddAssign, Div},
     sync::{Arc, Mutex},
@@ -21,7 +26,7 @@ pub struct MemoryTimedCacher<T, const N: usize> {
     index: usize,
 
     ///Holds a timer in case we only want to write data on intervals rather than whenever `add` is called
-    timer: Option<DoOnInterval>,
+    timer: Option<DoOnInterval<UpdateOnCheck>>,
 }
 
 impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
@@ -40,7 +45,7 @@ impl<T: Copy, const N: usize> Default for MemoryTimedCacher<T, N> {
 impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
     ///Creates a blank Memory Cacher
     #[must_use]
-    pub fn new(t: Option<DoOnInterval>) -> Self {
+    pub fn new(t: Option<DoOnInterval<UpdateOnCheck>>) -> Self {
         Self {
             timer: t,
             ..Default::default()
@@ -55,10 +60,10 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
     /// We check that there is data at the index before we drop the data at the old index
     pub fn add(&mut self, t: T) {
         let can = !self.data_ever_written
-            || if let Some(doi) = &mut self.timer {
-                doi.can_do().is_some()
+            || if let Some(t) = &mut self.timer {
+                t.can_do()
             } else {
-                true
+                false
             };
 
         if can {
@@ -73,6 +78,10 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
 
             if self.index == N - 1 {
                 self.full = true;
+            }
+
+            if let Some(t) = &mut self.timer {
+                t.update_timer();
             }
         }
     }
@@ -164,20 +173,38 @@ macro_rules! average_fp_impl {
 average_impl!(u8 => average_u8, u16 => average_u16, u32 => average_u32, u64 => average_u64, u128 => average_u128, i8 => average_i8, i16 => average_i16, i32 => average_i32, i64 => average_i64, i128 => average_i128);
 average_fp_impl!(f32 => average_f32, f64 => average_f64);
 
-//TODO: Make this generic for giving guards or options to update by self
+///Provides any number of unit structs that implement a unit type
+macro_rules! generic_enum {
+    (($trait_name:ident -> $trait_docs:literal) => $(($unit_struct_name:ident -> $docs:literal)),+) => {
+        pub trait $trait_name : Sealed {}
+
+        $(
+            #[doc=$trait_docs]
+            #[derive(Copy, Clone, Debug)]
+            pub struct $unit_struct_name;
+            impl Sealed for $unit_struct_name {}
+            impl $trait_name for $unit_struct_name {}
+        )+
+    };
+}
+
+generic_enum!((DoOnIntervalMode -> "Trait for how `DoOnInterval` should update the timer") => (GiveUpdaters -> "Give updaters that update the timer when they are dropped"), (UpdateOnCheck -> "Update the timer when if we can do the action when we check"));
 
 ///Timer struct to only allow actions to be performed on an interval
 #[derive(Debug)]
-pub struct DoOnInterval {
+pub struct DoOnInterval<MODE: DoOnIntervalMode> {
     ///When the action was last done
     last_did: Instant,
     ///Gap between doing actions
     gap: Duration,
-    ///Whether or not an instance of [`DOIUpdate`] exists pointing to this right now
+    ///Whether or not an instance of [`DOIUpdate`] exists pointing to this right now. Only used in [`GiveUpdaters`]
     updater_exists: bool,
+
+    ///`PhantomData` to make sure mode isn't optimised away
+    _pd: PhantomData<MODE>,
 }
 
-impl DoOnInterval {
+impl<MODE: DoOnIntervalMode> DoOnInterval<MODE> {
     ///Creates a new `DoOnInterval` using the duration given
     #[must_use]
     pub fn new(gap: Duration) -> Self {
@@ -185,13 +212,16 @@ impl DoOnInterval {
             last_did: Instant::now() - gap * 2,
             gap,
             updater_exists: false,
+            _pd: PhantomData,
         }
     }
+}
 
+impl DoOnInterval<GiveUpdaters> {
     ///Checks whether or not we can do the action, using the timer and checking whether any instances of [`DOIUpdate`] currently exist
     ///
     /// Returns `None` is we can't, and `Some` if we can. Make sure to bind the [`DOIUpdate`] to allow the [`Drop::drop`] impl to run correctly.
-    pub fn can_do(&mut self) -> Option<DOIUpdate> {
+    pub fn get_updater(&mut self) -> Option<DOIUpdate> {
         if !self.updater_exists && self.last_did.elapsed() > self.gap {
             self.updater_exists = true;
             Some(DOIUpdate(self))
@@ -199,10 +229,57 @@ impl DoOnInterval {
             None
         }
     }
+
+    ///Turns a [`GiveUpdaters`] to an [`UpdateOnCheck`]. Can return the original [`GiveUpdaters`] if an updater currently exists
+    #[must_use]
+    pub fn to_update_on_check(
+        self,
+    ) -> Either<DoOnInterval<GiveUpdaters>, DoOnInterval<UpdateOnCheck>> {
+        if self.updater_exists {
+            Either::Left(self)
+        } else {
+            let nu = DoOnInterval {
+                last_did: self.last_did,
+                gap: self.gap,
+                updater_exists: false,
+                _pd: PhantomData,
+            };
+            Either::Right(nu)
+        }
+    }
+}
+impl DoOnInterval<UpdateOnCheck> {
+    ///Checks whether or not enough time has elapsed. If so, updates the timer and returns true, else returns false.
+    ///
+    ///If the action takes a while, it is reccomended to call `update_timer`
+    pub fn can_do(&mut self) -> bool {
+        if self.last_did.elapsed() > self.gap {
+            self.last_did = Instant::now();
+            true
+        } else {
+            false
+        }
+    }
+
+    ///Updates the timer.
+    pub fn update_timer(&mut self) {
+        self.last_did = Instant::now();
+    }
+
+    ///Turns a [`UpdateOnCheck`] to a [`GiveUpdaters`]
+    #[must_use]
+    pub fn to_give_updaters(self) -> DoOnInterval<GiveUpdaters> {
+        DoOnInterval {
+            last_did: self.last_did,
+            gap: self.gap,
+            updater_exists: false,
+            _pd: PhantomData,
+        }
+    }
 }
 
 ///Struct to update [`DoOnInterval`] when the action finishes.
-pub struct DOIUpdate<'a>(&'a mut DoOnInterval);
+pub struct DOIUpdate<'a>(&'a mut DoOnInterval<GiveUpdaters>);
 impl Drop for DOIUpdate<'_> {
     fn drop(&mut self) {
         self.0.last_did = Instant::now();

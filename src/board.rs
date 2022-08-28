@@ -4,20 +4,90 @@ use crate::{
     server_interface::{JSONMove, JSONPieceList},
 };
 use anyhow::{Context, Result};
-use std::ops::{Index, IndexMut};
-
-//TODO: turn Coords to struct
-//TODO: turn pieces to array
+use std::{
+    fmt::Debug,
+    ops::{Index, IndexMut},
+};
 
 ///Utility type to hold a set of [`u32`] coordinates in an `(x, y)` format
-pub type Coords = (u32, u32);
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct Coords(u32, u32);
+
+impl Debug for Coords {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Coords")
+            .field("x", &self.0)
+            .field("y", &self.1)
+            .finish()
+    }
+}
+
+impl TryFrom<(i32, i32)> for Coords {
+    type Error = anyhow::Error;
+
+    fn try_from((x, y): (i32, i32)) -> Result<Self, Self::Error> {
+        if x < 0 {
+            bail!("x < 0")
+        }
+        if x > 7 {
+            bail!("x > 7")
+        }
+        if y < 0 {
+            bail!("y < 0")
+        }
+        if y > 7 {
+            bail!("y > 7")
+        }
+
+        #[allow(clippy::cast_sign_loss)]
+        Ok(Self(x as u32, y as u32)) //conversion works as all checked above
+    }
+}
+impl TryFrom<(u32, u32)> for Coords {
+    type Error = anyhow::Error;
+
+    fn try_from((x, y): (u32, u32)) -> Result<Self, Self::Error> {
+        if x > 7 {
+            bail!("x > 7")
+        }
+        if y > 7 {
+            bail!("y > 7")
+        }
+
+        Ok(Self(x as u32, y as u32)) //conversion works as all checked above
+    }
+}
+
+impl From<Coords> for (u32, u32) {
+    fn from(c: Coords) -> Self {
+        (c.0, c.1)
+    }
+}
+
+impl Coords {
+    ///Provides an index with which to index a 1D array using the 2D coords, assuming there are 8 rows per column
+    #[must_use]
+    pub fn to_usize(&self) -> usize {
+        (self.1 * 8 + self.0) as usize
+    }
+    ///Provides the X part of the coordinate
+    #[must_use]
+    pub const fn x(&self) -> u32 {
+        self.0
+    }
+    ///Provides the Y part of the coordinate
+    #[must_use]
+    pub const fn y(&self) -> u32 {
+        self.1
+    }
+}
 
 ///Struct to hold a Chess Board
 pub struct Board {
     ///1D vector to hold all of the [`ChessPiece`]s - where the index of each piece is `y * 8 + x`
     ///
     ///`None` signifies no piece, and `Some` signifies a piece
-    pieces: Vec<Option<ChessPiece>>,
+    pieces: [Option<ChessPiece>; 64],
     ///Used to hold the contents and details of the previous move, in case the move was invalid
     ///
     ///Holds the move made, the piece taken, and what the original kind was
@@ -27,7 +97,7 @@ pub struct Board {
 impl Default for Board {
     fn default() -> Self {
         Self {
-            pieces: vec![None; 64],
+            pieces: [None; 64],
             previous: None,
         }
     }
@@ -42,7 +112,7 @@ impl Index<Coords> for Board {
     /// Can panic if the coords are out-of-bounds, but very unlikely
     fn index(&self, index: Coords) -> &Self::Output {
         self.pieces
-            .get(u32_to_idx(index))
+            .get(index.to_usize())
             .ae()
             .with_context(|| format!("Getting position from {index:?}"))
             .unwrap_log_error()
@@ -56,7 +126,7 @@ impl IndexMut<Coords> for Board {
     /// Can panic if the coords are out-of-bounds, but very unlikely
     fn index_mut(&mut self, index: Coords) -> &mut Self::Output {
         self.pieces
-            .get_mut(u32_to_idx(index))
+            .get_mut(index.to_usize())
             .ae()
             .with_context(|| format!("Getting position mutably from {index:?}"))
             .unwrap_log_error()
@@ -132,12 +202,6 @@ impl Board {
     ///Checks whether or not a piece exists at a given set of coordinates
     #[must_use]
     pub fn piece_exists_at_location(&self, coords: Coords) -> bool {
-        matches!(self.pieces.get(u32_to_idx(coords)), Some(Some(_)))
+        matches!(self.pieces.get(coords.to_usize()), Some(Some(_)))
     }
-}
-
-///Converts a set of [`Coords`] to a [`usize`] for indexing
-#[must_use]
-pub const fn u32_to_idx((x, y): Coords) -> usize {
-    (y * 8 + x) as usize
 }

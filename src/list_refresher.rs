@@ -110,7 +110,7 @@ fn run_loop(
                 .context("unlocking mtc mutex")
                 .unwrap_log_error();
 
-            if let Some(_doiu) = request_print_timer.can_do() {
+            if let Some(_doiu) = request_print_timer.get_updater() {
                 let avg_ttr = lock.average_u32();
                 info!(?avg_ttr, "Average time for response");
             }
@@ -140,7 +140,7 @@ fn run_loop(
                     if msg == MessageToWorker::UpdateNOW {
                         None //continue regardless
                     } else {
-                        let doiu = refresh_timer.can_do();
+                        let doiu = refresh_timer.get_updater();
                         if let Some(doiu) = doiu {
                             Some(doiu) //doi says we can
                         } else {

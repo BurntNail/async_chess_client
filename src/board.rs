@@ -187,6 +187,7 @@ impl IndexMut<Coords> for Board {
 }
 
 //TODO: Make this into a generic for Board<MakeMove> vs Board<DealWithMove>
+//more like the rocket than the other examples
 impl Board {
     ///Create a new board from a [`JSONPieceList`], using `JSONPieceList::into_game_list`
     ///

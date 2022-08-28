@@ -63,10 +63,10 @@ impl<T: Debug + Copy, const N: usize> MemoryTimedCacher<T, N> {
             || if let Some(t) = &mut self.timer {
                 t.can_do()
             } else {
-                false
+                true
             };
 
-        if can {
+        if can {        
             if self.data_ever_written {
                 unsafe { self.data[self.index].assume_init_drop() };
             } else {

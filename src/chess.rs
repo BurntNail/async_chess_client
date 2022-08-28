@@ -2,23 +2,27 @@ use std::{
     error::Error as SError,
     fmt::{Debug, Formatter},
 };
+use anyhow::Context;
 use strum::{Display, EnumIter, IntoEnumIterator};
 
+use crate::error_ext::{ToAnyhowNotErr, ErrorExt};
+
 ///Enum with all of the chess piece kinds
-#[derive(EnumIter, Display, Copy, Clone, PartialEq, Eq)]
+#[derive(EnumIter, Display, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
 pub enum ChessPieceKind {
     ///Bishop Piece - move on diagonals
-    Bishop,
+    Bishop = 2,
     ///Knight piece - dx=1,dy=1
-    Knight,
+    Knight = 1,
     ///Pawn - move 2 towards enemy dir on turn 1, 1 on subsequent, take diagonally
-    Pawn,
+    Pawn = 0,
     ///Queen - [`Bishop`] | [`Rook`]
-    Queen,
+    Queen = 4,
     ///King - [`Queen`] but one tile
-    King,
+    King = 5,
     ///Rook - up,down,left,right
-    Rook,
+    Rook = 3,
 }
 
 ///Enum to hold errors for chess piece kinds
@@ -48,7 +52,7 @@ impl TryFrom<String> for ChessPieceKind {
 }
 
 ///Struct to hold a chess piece
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ChessPiece {
     ///The kind of the chess piece
     pub kind: ChessPieceKind,
@@ -92,5 +96,19 @@ impl Debug for ChessPiece {
             .field("kind", &self.kind.to_string())
             .field("is_white", &self.is_white)
             .finish()
+    }
+}
+
+impl PartialOrd for ChessPiece {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.is_white.partial_cmp(&other.is_white) {
+            Some(core::cmp::Ordering::Equal) => self.kind.partial_cmp(&other.kind),
+            ord => return ord,
+        }
+    }    
+}
+impl Ord for ChessPiece {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).ae().with_context(|| format!("comparing {self:?} to {other:?}")).unwrap_log_error()
     }
 }

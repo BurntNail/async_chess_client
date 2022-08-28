@@ -241,4 +241,10 @@ impl Board {
             false
         }
     }
+
+    ///Gets a clone of all the pieces which have been taken
+    #[must_use]
+    pub fn get_taken (&self) -> Vec<ChessPiece> {
+        self.taken.clone()
+    }
 }

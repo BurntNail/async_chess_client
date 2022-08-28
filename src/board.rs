@@ -211,7 +211,7 @@ impl Board {
                 piece.kind = old_kind;
             }
         } else {
-            Err::<(), _>("undow move without move to undo").unwrap_log_error()
+            Err::<(), _>("undo move without move to undo").unwrap_log_error()
         }
     }
 

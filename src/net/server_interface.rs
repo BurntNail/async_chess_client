@@ -1,5 +1,5 @@
 use crate::{
-    chess::board::board::{Board, CanMovePiece},
+    chess::boards::board::{Board, CanMovePiece},
     prelude::{ChessPiece, ChessPieceKind, Coords, Error, ErrorExt, Result},
     util::error_ext::ToAnyhowNotErr,
 };

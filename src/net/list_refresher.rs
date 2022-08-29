@@ -167,20 +167,18 @@ fn run_loop(
                     request_timer.clone(),
                     refresh_timer.clone(),
                 );
-                handles.push(std::thread::spawn(move || {
+
+                std::thread::spawn(move || {
                     if !update_req_inflight.load(Ordering::SeqCst) {
                         update_req_inflight.store(true, Ordering::SeqCst);
                         let _st = ThreadSafeScopedToListTimer::new(request_timer);
 
-                        let res = do_update_list(id, reqwest_error_at_last_refresh, mtg_tx, client);
+                        do_update_list(id, reqwest_error_at_last_refresh, mtg_tx, client);
 
                         update_req_inflight.store(false, Ordering::SeqCst);
                         refresh_timer.lock_panic("refresh timer").update_timer();
-                        res
-                    } else {
-                        Ok(())
                     }
-                }));
+                });
             }
             MessageToWorker::RestartBoard => {
                 let (client, rt) = (client.clone(), request_timer.clone());
@@ -191,24 +189,29 @@ fn run_loop(
                 });
             }
             MessageToWorker::MakeMove(m) => {
-                let (mtg_tx, client, rt, mr_inflight) = (mtg_tx.clone(), client.clone(), request_timer.clone(), move_req_inflight.clone());
-                handles.push(std::thread::spawn(move || {
-                    if !mr_inflight.load(Ordering::SeqCst) {
+                let (mtg_tx, client, rt, mr_inflight) = (
+                    mtg_tx.clone(),
+                    client.clone(),
+                    request_timer.clone(),
+                    move_req_inflight.clone(),
+                );
+                std::thread::spawn(move || {
+                    if mr_inflight.load(Ordering::SeqCst) {
+                        mtg_tx
+                            .send(MessageToGame::UpdateBoard(BoardMessage::Move(
+                                MoveOutcome::CouldntProcessMove,
+                            )))
+                            .context("piece move result")
+                            .warn();
+                    } else {
                         mr_inflight.store(true, Ordering::SeqCst);
 
                         let _st = ThreadSafeScopedToListTimer::new(rt);
-                        let r = do_make_move(m, mtg_tx, client);
-                        
+                        do_make_move(m, mtg_tx, client);
+
                         mr_inflight.store(false, Ordering::SeqCst);
-                        r
-                    } else {
-                        mtg_tx
-                            .send(MessageToGame::UpdateBoard(BoardMessage::Move(MoveOutcome::CouldntProcessMove))) 
-                            .context("piece move result")
-                            .warn();
-                        Ok(())
                     }
-                }));
+                });
             }
             MessageToWorker::InvalidateKill => {
                 do_invalidate_exit(id, client);
@@ -259,12 +262,13 @@ impl ListRefresher {
     }
 }
 
+///Function to be run on a separate thread to update the list and send a message to a [`Sender`]
 fn do_update_list(
     id: u32,
     reqwest_error_at_last_refresh: Arc<AtomicBool>,
     mtg_tx: Sender<MessageToGame>,
     client: Client,
-) -> Result<()> {
+) {
     let result_rsp = client
         .get(format!("http://109.74.205.63:12345/games/{id}"))
         .send();
@@ -279,7 +283,13 @@ fn do_update_list(
                     if rsp.status() == StatusCode::ALREADY_REPORTED {
                         Either::Left(BoardMessage::UseExisting)
                     } else {
-                        Either::Left(BoardMessage::NewList(rsp.json::<JSONPieceList>()?))
+                        match rsp.json::<JSONPieceList>() {
+                            Ok(l) => Either::Left(BoardMessage::NewList(l)),
+                            Err(e) => {
+                                error!(%e, "Unable to parse JSON list from reqwest");
+                                Either::Right(e)
+                            }
+                        }
                     }
                 }
                 Err(e) => {
@@ -310,10 +320,9 @@ fn do_update_list(
         .send(MessageToGame::UpdateBoard(msg))
         .context("sending update list msg")
         .error();
-
-    Ok(())
 }
 
+///Utility function to be run on a separate thread to restart the board
 fn do_restart_board(id: u32, client: Client) {
     match client
         .post("http://109.74.205.63:12345/newgame")
@@ -330,7 +339,10 @@ fn do_restart_board(id: u32, client: Client) {
     }
 }
 
-fn do_make_move(m: JSONMove, mtg_tx: Sender<MessageToGame>, client: Client) -> Result<()> {
+///Utility function to be run on a separate thread to make a move.
+///
+/// NB: Make sure not to call this method again until it has finished
+fn do_make_move(m: JSONMove, mtg_tx: Sender<MessageToGame>, client: Client) {
     mtg_tx
         .send(MessageToGame::UpdateBoard(BoardMessage::TmpMove(m)))
         .context("sending msg to game re moving piece temp")
@@ -373,10 +385,9 @@ fn do_make_move(m: JSONMove, mtg_tx: Sender<MessageToGame>, client: Client) -> R
         .send(MessageToGame::UpdateBoard(BoardMessage::Move(outcome)))
         .context("piece move result")
         .warn();
-
-    Ok(())
 }
 
+///Utility function to send the invalidate-kill message
 fn do_invalidate_exit(id: u32, client: Client) {
     info!("InvalidateKill msg sending");
 

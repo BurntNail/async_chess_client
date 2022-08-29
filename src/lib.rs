@@ -29,7 +29,7 @@ pub mod util;
 pub mod prelude {
     pub use crate::{
         chess::{
-            chess::{ChessPiece, ChessPieceKind},
+            chess_piece::{ChessPiece, ChessPieceKind},
             coords::Coords,
         },
         util::{

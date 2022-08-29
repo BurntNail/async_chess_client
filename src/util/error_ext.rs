@@ -152,7 +152,9 @@ impl<T> ToAnyhowPoisonErr<T> for LockResult<T> {
     }
 }
 
+///Utility trait for Mutexes
 pub trait MutexExt<T> {
+    ///Function to unlock or panic using `error!`
     fn lock_panic<C: Display + Send + Sync + 'static>(&self, msg: C) -> MutexGuard<T>;
 }
 impl<T> MutexExt<T> for Mutex<T> {

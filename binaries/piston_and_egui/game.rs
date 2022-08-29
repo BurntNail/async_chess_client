@@ -4,14 +4,14 @@ use crate::{
 };
 use anyhow::{Context as _, Result};
 use async_chess_client::{
-    chess::board::{board::Board, board_container::BoardContainer},
+    chess::boards::{board::Board, board_container::BoardContainer},
     net::{
         list_refresher::{
             BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome,
         },
         server_interface::{no_connection_list, JSONMove},
     },
-    prelude::{Coords, Either, ErrorExt, ScopedTimer},
+    prelude::{Coords, Either, ErrorExt},
     util::{cacher::Cacher, error_ext::ToAnyhowErr},
 };
 use graphics::DrawState;
@@ -228,7 +228,6 @@ impl ChessGame {
                 START_Y * window_scale,
             );
 
-            
             let mut white_dy = 0.0;
             let mut black_dy = 0.0;
 
@@ -314,7 +313,7 @@ impl ChessGame {
                         if let Either::Right(bo) = self.board.clone() {
                             match outcome {
                                 MoveOutcome::Worked(taken) => {
-                                    self.board = Either::Left(bo.move_worked(taken))
+                                    self.board = Either::Left(bo.move_worked(taken));
                                 }
                                 MoveOutcome::Invalid | MoveOutcome::CouldntProcessMove => {
                                     info!("Resetting pieces");
@@ -326,7 +325,7 @@ impl ChessGame {
                         }
                     }
                     BoardMessage::NoConnectionList => {
-                        self.board = Either::Left(no_connection_list())
+                        self.board = Either::Left(no_connection_list());
                     }
                     BoardMessage::NewList(l) => self.board = Either::Left(Board::new_json(l)?),
                     BoardMessage::UseExisting => {}

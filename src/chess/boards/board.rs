@@ -167,6 +167,7 @@ impl Board<NeedsMoveUpdate> {
     ///
     /// # Errors
     /// Can return an error if there is no longer a piece at the coordinates the piece was moved to
+    #[must_use]
     pub fn undo_move(mut self) -> Board<CanMovePiece> {
         if let Some((m, taken, old_kind)) = std::mem::take(&mut self.previous) {
             self[m.current_coords()] = self[m.new_coords()];
@@ -191,6 +192,7 @@ impl Board<NeedsMoveUpdate> {
     ///
     /// # Panics
     /// Can panic if there wasn't a move made beforehand
+    #[must_use]
     pub fn move_worked(mut self, taken: bool) -> Board<CanMovePiece> {
         if taken {
             let (_, p, _) = std::mem::take(&mut self.previous)

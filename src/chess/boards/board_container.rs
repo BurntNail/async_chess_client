@@ -13,10 +13,11 @@ impl Default for BoardContainer {
     }
 }
 
-///Macro for use with BoardContainer that just repeats board functions
+///Macro for use with [`BoardContainer`] that just repeats board functions
 macro_rules! method_on_original_ref {
     ($func_name:ident $func_return:ty => $($arg_name:ident $arg_type:ty),*) => {
         impl BoardContainer {
+            #[must_use]
             pub fn $func_name (&self, $($arg_name: $arg_type)*) -> $func_return {
                 match self {
                     Self::Left(l) => l.$func_name($($arg_name,)*),
@@ -26,7 +27,7 @@ macro_rules! method_on_original_ref {
         }
     };
 }
-///Macro for use with BoardContainer that just repeats board functions
+///Macro for use with [`BoardContainer`] that just repeats board functions
 macro_rules! method_on_original_mut_ref {
     ($func_name:ident $func_return:ty => $($arg_name:ident $arg_type:ty),*) => {
         impl BoardContainer {

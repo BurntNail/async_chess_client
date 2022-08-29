@@ -11,6 +11,7 @@
     clippy::too_many_lines,
     clippy::needless_pass_by_value
 )]
+//!Async chess client with an egui configurator, and a piston game runner
 
 use crate::{egui_launcher::egui_main, piston::piston_main};
 use anyhow::{Context, Result};

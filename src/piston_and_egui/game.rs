@@ -103,9 +103,9 @@ impl ChessGame {
         }
         let mut errs = vec![];
 
-        for col in 0..8_u32 {
-            for row in 0..8_u32 {
-                if let Some(piece) = self.board[(col, row).try_into().unwrap_log_error()] {
+        for col in 0..8_u8 {
+            for row in 0..8_u8 {
+                if let Some(piece) = self.board[(col, row).into()] {
                     match self.cache.get(&piece.to_file_name()) {
                         Err(e) => {
                             errs.push(e.context(format!(
@@ -121,8 +121,8 @@ impl ChessGame {
                             let mut draw =
                                 || image.draw(tex, &DrawState::default(), trans, graphics);
 
-                            if let Some((lp_x, lp_y)) = self.last_pressed.to_option() {
-                                if lp_x == col as u8 && lp_y == row as u8 {
+                            if let Coords::OnBoard(lp_x, lp_y) = self.last_pressed {
+                                if lp_x == col && lp_y == row {
                                     let tx = self.cache.get("selected.png").context("Unable to find \"selected.png\" - check your assets folder").unwrap_log_error();
                                     image.draw(tx, &DrawState::default(), trans, graphics);
                                 } else {
@@ -138,7 +138,9 @@ impl ChessGame {
         }
 
         {
+            ///Size in pixels for pieces which have been taken
             const TAKEN_TILE_SIZE: f64 = TILE_S * 0.75;
+            ///Starting Y for Taken tiles, such that when all pieces are taken, it it centred
             const START_Y: f64 = (BOARD_S - (TAKEN_TILE_SIZE * 16.0)) / 2.0; //16 pieces
 
             let mut pieces = self.board.get_taken();
@@ -149,7 +151,6 @@ impl ChessGame {
                 (RIGHT_BOUND + TAKEN_TILE_SIZE) * window_scale,
                 START_Y * window_scale,
             );
-            //TODO: remove all *.0s and use constants with division
             //TODO: move out all parts of rendering to their own methods
 
             let mut white_dy = 0.0;
@@ -244,14 +245,14 @@ impl ChessGame {
                 self.refresher
                     .send_msg(MessageToWorker::MakeMove(JSONMove::new(
                         self.id,
-                        x as u32,
-                        y as u32,
+                        u32::from(x),
+                        u32::from(y),
                         current_press.0,
                         current_press.1,
                     )))
                     .context("sending a message to the worker re moving")?;
 
-                self.ex_last_pressed = Coords::OnBoard(x, y)
+                self.ex_last_pressed = Coords::OnBoard(x, y);
             }
         }
 

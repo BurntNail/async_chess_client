@@ -55,6 +55,7 @@ impl TryFrom<(i32, i32)> for Coords {
             bail!("y > 7")
         }
 
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         Ok(Self::OnBoard(x as u8, y as u8)) //conversion works as all checked above
     }
 }
@@ -69,6 +70,7 @@ impl TryFrom<(u32, u32)> for Coords {
             bail!("y > 7")
         }
 
+        #[allow(clippy::cast_possible_truncation)]
         Ok(Self::OnBoard(x as u8, y as u8)) //conversion works as all checked above
     }
 }
@@ -76,6 +78,11 @@ impl TryFrom<(u32, u32)> for Coords {
 impl From<Coords> for Option<(u8, u8)> {
     fn from(c: Coords) -> Self {
         c.to_option()
+    }
+}
+impl From<(u8, u8)> for Coords {
+    fn from((x, y): (u8, u8)) -> Self {
+        Self::OnBoard(x, y)
     }
 }
 
@@ -100,6 +107,7 @@ impl Coords {
     }
 
     ///Provides a utility function for turning `Coords` to an `Option<(u8, u8)>`
+    #[must_use]
     pub fn to_option(&self) -> Option<(u8, u8)> {
         match *self {
             Coords::OffBoard => None,
@@ -108,11 +116,13 @@ impl Coords {
     }
 
     ///Utility function for whether or not it is taken
+    #[must_use]
     pub fn is_taken(&self) -> bool {
         matches!(self, Coords::OffBoard)
     }
 
     ///Utility function for whether or not it is on the board
+    #[must_use]
     pub fn is_on_board(&self) -> bool {
         matches!(self, Coords::OnBoard(_, _))
     }
@@ -252,7 +262,7 @@ impl Board {
                 piece.kind = old_kind;
             }
         } else {
-            Err::<(), _>("undo move without move to undo").unwrap_log_error()
+            Err::<(), _>("undo move without move to undo").unwrap_log_error();
         }
     }
 

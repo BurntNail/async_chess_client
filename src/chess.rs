@@ -103,7 +103,7 @@ impl PartialOrd for ChessPiece {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match self.is_white.partial_cmp(&other.is_white) {
             Some(core::cmp::Ordering::Equal) => self.kind.partial_cmp(&other.kind),
-            ord => return ord,
+            ord => ord,
         }
     }
 }

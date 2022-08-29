@@ -11,7 +11,7 @@ use async_chess_client::{
         },
         server_interface::{no_connection_list, JSONMove},
     },
-    prelude::{Coords, Either, ErrorExt},
+    prelude::{Coords, Either, ErrorExt, ScopedTimer},
     util::{cacher::Cacher, error_ext::ToAnyhowErr},
 };
 use graphics::DrawState;
@@ -227,8 +227,8 @@ impl ChessGame {
                 (RIGHT_BOUND + TAKEN_TILE_SIZE) * window_scale,
                 START_Y * window_scale,
             );
-            //TODO: move out all parts of rendering to their own methods
 
+            
             let mut white_dy = 0.0;
             let mut black_dy = 0.0;
 
@@ -312,7 +312,6 @@ impl ChessGame {
                     }
                     BoardMessage::Move(outcome) => {
                         if let Either::Right(bo) = self.board.clone() {
-                            //TODO: work out way to remove these clones without the faff of maybeuninit
                             match outcome {
                                 MoveOutcome::Worked(taken) => {
                                     self.board = Either::Left(bo.move_worked(taken))

@@ -70,7 +70,7 @@ pub enum MoveOutcome {
     ///The move is invalid, and should be undone
     Invalid,
     ///The request from `reqwest` failed
-    ReqwestFailed,
+    CouldntProcessMove,
 }
 
 ///Struct to refresh the board and deal with requests to the server, using multi-threading and channels
@@ -97,6 +97,7 @@ fn run_loop(
     id: u32,
 ) -> Result<()> {
     let update_req_inflight = Arc::new(AtomicBool::new(false));
+    let move_req_inflight = Arc::new(AtomicBool::new(false));
 
     let client = ClientBuilder::default()
         .user_agent("JackyBoi/AsyncChess")
@@ -190,10 +191,23 @@ fn run_loop(
                 });
             }
             MessageToWorker::MakeMove(m) => {
-                let (mtg_tx, client, rt) = (mtg_tx.clone(), client.clone(), request_timer.clone());
+                let (mtg_tx, client, rt, mr_inflight) = (mtg_tx.clone(), client.clone(), request_timer.clone(), move_req_inflight.clone());
                 handles.push(std::thread::spawn(move || {
-                    let _st = ThreadSafeScopedToListTimer::new(rt);
-                    do_make_move(m, mtg_tx, client)
+                    if !mr_inflight.load(Ordering::SeqCst) {
+                        mr_inflight.store(true, Ordering::SeqCst);
+
+                        let _st = ThreadSafeScopedToListTimer::new(rt);
+                        let r = do_make_move(m, mtg_tx, client);
+                        
+                        mr_inflight.store(false, Ordering::SeqCst);
+                        r
+                    } else {
+                        mtg_tx
+                            .send(MessageToGame::UpdateBoard(BoardMessage::Move(MoveOutcome::CouldntProcessMove))) 
+                            .context("piece move result")
+                            .warn();
+                        Ok(())
+                    }
                 }));
             }
             MessageToWorker::InvalidateKill => {
@@ -342,16 +356,16 @@ fn do_make_move(m: JSONMove, mtg_tx: Sender<MessageToGame>, client: Client) -> R
                         MoveOutcome::Invalid
                     } else {
                         error!(%e, %sc, "Error in input response status code");
-                        MoveOutcome::ReqwestFailed
+                        MoveOutcome::CouldntProcessMove
                     }
                 } else {
-                    MoveOutcome::ReqwestFailed
+                    MoveOutcome::CouldntProcessMove
                 }
             }
         },
         Err(e) => {
             error!(%e, "Error in input response");
-            MoveOutcome::ReqwestFailed
+            MoveOutcome::CouldntProcessMove
         }
     };
 

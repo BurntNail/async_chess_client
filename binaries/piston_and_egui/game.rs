@@ -317,7 +317,7 @@ impl ChessGame {
                                 MoveOutcome::Worked(taken) => {
                                     self.board = Either::Left(bo.move_worked(taken))
                                 }
-                                MoveOutcome::Invalid | MoveOutcome::ReqwestFailed => {
+                                MoveOutcome::Invalid | MoveOutcome::CouldntProcessMove => {
                                     info!("Resetting pieces");
                                     self.board = Either::Left(bo.undo_move());
                                 }

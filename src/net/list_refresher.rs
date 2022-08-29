@@ -1,5 +1,8 @@
 use anyhow::{Context as _, Result};
-use reqwest::{blocking::ClientBuilder, StatusCode};
+use reqwest::{
+    blocking::{Client, ClientBuilder},
+    StatusCode,
+};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -156,7 +159,7 @@ fn run_loop(
                     }
                 };
 
-                let (inflight, reqwest_error_at_last_refresh, mtg_tx, client, request_timer) = (
+                let (req_inflight, reqwest_error_at_last_refresh, mtg_tx, client, request_timer) = (
                     req_inflight.clone(),
                     reqwest_error_at_last_refresh.clone(),
                     mtg_tx.clone(),
@@ -164,63 +167,14 @@ fn run_loop(
                     request_timer.clone(),
                 );
                 handles.push(std::thread::spawn(move || {
-                    let _lock = inflight
+                    let _lock = req_inflight
                         .lock()
                         .ae()
                         .context("locking inflight mutex")
                         .unwrap_log_error();
 
                     let _st = ThreadSafeScopedToListTimer::new(request_timer);
-
-                    let result_rsp = client
-                        .get(format!("http://109.74.205.63:12345/games/{id}"))
-                        .send();
-
-                    let msg = match result_rsp {
-                        Ok(rsp) => {
-                            let rsp = rsp.error_for_status();
-                            match rsp {
-                                Ok(rsp) => {
-                                    reqwest_error_at_last_refresh.store(false, Ordering::SeqCst);
-
-                                    if rsp.status() == StatusCode::ALREADY_REPORTED {
-                                        Either::Left(BoardMessage::UseExisting)
-                                    } else {
-                                        Either::Left(BoardMessage::NewList(
-                                            rsp.json::<JSONPieceList>()?,
-                                        ))
-                                    }
-                                }
-                                Err(e) => {
-                                    warn!(%e, "Error updating list");
-
-                                    Either::Right(e)
-                                }
-                            }
-                        }
-                        Err(e) => Either::Right(e),
-                    };
-
-                    let msg = match msg {
-                        Either::Left(m) => m,
-                        Either::Right(e) => {
-                            if reqwest_error_at_last_refresh.load(Ordering::SeqCst) {
-                                warn!(%e, "Using existing list due to errors");
-                                BoardMessage::UseExisting
-                            } else {
-                                reqwest_error_at_last_refresh.store(true, Ordering::SeqCst);
-                                error!(%e, "Error refreshing list - sending NCL");
-                                BoardMessage::NoConnectionList
-                            }
-                        }
-                    };
-
-                    mtg_tx
-                        .send(MessageToGame::UpdateBoard(msg))
-                        .context("sending update list msg")
-                        .error();
-
-                    Ok(())
+                    do_update_list(id, reqwest_error_at_last_refresh, mtg_tx, client)
                 }));
             }
             MessageToWorker::RestartBoard => {
@@ -238,20 +192,7 @@ fn run_loop(
                         .unwrap_log_error();
 
                     let _st = ThreadSafeScopedToListTimer::new(rt);
-
-                    match client
-                        .post("http://109.74.205.63:12345/newgame")
-                        .body(id.to_string())
-                        .send()
-                    {
-                        Ok(rsp) => match rsp.error_for_status() {
-                            Ok(rsp) => {
-                                info!(update=?rsp.text(), "Update from server on restarting");
-                            }
-                            Err(e) => warn!(%e, "Error code from server on restarting"),
-                        },
-                        Err(e) => error!(%e, "Error restarting"),
-                    }
+                    do_restart_board(id, client);
                 });
             }
             MessageToWorker::MakeMove(m) => {
@@ -269,51 +210,7 @@ fn run_loop(
                         .unwrap_log_error();
 
                     let _st = ThreadSafeScopedToListTimer::new(rt);
-
-                    mtg_tx
-                        .send(MessageToGame::UpdateBoard(BoardMessage::TmpMove(m)))
-                        .context("sending msg to game re moving piece temp")
-                        .warn();
-
-                    let rsp = client
-                        .post("http://109.74.205.63:12345/movepiece")
-                        .json(&m)
-                        .send();
-
-                    let outcome = match rsp {
-                        Ok(rsp) => match rsp.error_for_status() {
-                            Ok(rsp) => {
-                                let txt = rsp.text();
-                                info!(update=?txt, "Update from server on moving");
-                                let taken = txt.map_or(false, |txt| !txt.contains("not"));
-                                MoveOutcome::Worked(taken)
-                            }
-                            Err(e) => {
-                                if let Some(sc) = e.status() {
-                                    if sc == StatusCode::PRECONDITION_FAILED {
-                                        error!("Invalid move");
-                                        MoveOutcome::Invalid
-                                    } else {
-                                        error!(%e, %sc, "Error in input response status code");
-                                        MoveOutcome::ReqwestFailed
-                                    }
-                                } else {
-                                    MoveOutcome::ReqwestFailed
-                                }
-                            }
-                        },
-                        Err(e) => {
-                            error!(%e, "Error in input response");
-                            MoveOutcome::ReqwestFailed
-                        }
-                    };
-
-                    mtg_tx
-                        .send(MessageToGame::UpdateBoard(BoardMessage::Move(outcome)))
-                        .context("piece move result")
-                        .warn();
-
-                    Ok(())
+                    do_make_move(m, mtg_tx, client)
                 }));
             }
             MessageToWorker::InvalidateKill => {
@@ -323,25 +220,7 @@ fn run_loop(
                     .context("locking inflight mutex")
                     .unwrap_log_error();
 
-                info!("InvalidateKill msg sending");
-
-                let rsp = client
-                    .post("http://109.74.205.63:12345/invalidate")
-                    .body(id.to_string())
-                    .send();
-
-                match rsp {
-                    Ok(rsp) => match rsp.error_for_status() {
-                        Ok(rsp) => {
-                            info!(update=?rsp.text(), "Update from server on invalidating");
-                        }
-                        Err(e) => warn!(%e, "Error code from server on invalidating"),
-                    },
-                    Err(e) => error!(%e, "Error invalidating"),
-                }
-
-                info!("Ending refresher");
-
+                do_invalidate_exit(id, client);
                 break;
             }
         }
@@ -385,6 +264,145 @@ impl ListRefresher {
     pub fn try_recv(&self) -> Result<MessageToGame, TryRecvError> {
         self.rx.try_recv()
     }
+}
+
+fn do_update_list(
+    id: u32,
+    reqwest_error_at_last_refresh: Arc<AtomicBool>,
+    mtg_tx: Sender<MessageToGame>,
+    client: Client,
+) -> Result<()> {
+    let result_rsp = client
+        .get(format!("http://109.74.205.63:12345/games/{id}"))
+        .send();
+
+    let msg = match result_rsp {
+        Ok(rsp) => {
+            let rsp = rsp.error_for_status();
+            match rsp {
+                Ok(rsp) => {
+                    reqwest_error_at_last_refresh.store(false, Ordering::SeqCst);
+
+                    if rsp.status() == StatusCode::ALREADY_REPORTED {
+                        Either::Left(BoardMessage::UseExisting)
+                    } else {
+                        Either::Left(BoardMessage::NewList(rsp.json::<JSONPieceList>()?))
+                    }
+                }
+                Err(e) => {
+                    warn!(%e, "Error updating list");
+
+                    Either::Right(e)
+                }
+            }
+        }
+        Err(e) => Either::Right(e),
+    };
+
+    let msg = match msg {
+        Either::Left(m) => m,
+        Either::Right(e) => {
+            if reqwest_error_at_last_refresh.load(Ordering::SeqCst) {
+                warn!(%e, "Using existing list due to errors");
+                BoardMessage::UseExisting
+            } else {
+                reqwest_error_at_last_refresh.store(true, Ordering::SeqCst);
+                error!(%e, "Error refreshing list - sending NCL");
+                BoardMessage::NoConnectionList
+            }
+        }
+    };
+
+    mtg_tx
+        .send(MessageToGame::UpdateBoard(msg))
+        .context("sending update list msg")
+        .error();
+
+    Ok(())
+}
+
+fn do_restart_board(id: u32, client: Client) {
+    match client
+        .post("http://109.74.205.63:12345/newgame")
+        .body(id.to_string())
+        .send()
+    {
+        Ok(rsp) => match rsp.error_for_status() {
+            Ok(rsp) => {
+                info!(update=?rsp.text(), "Update from server on restarting");
+            }
+            Err(e) => warn!(%e, "Error code from server on restarting"),
+        },
+        Err(e) => error!(%e, "Error restarting"),
+    }
+}
+
+fn do_make_move(m: JSONMove, mtg_tx: Sender<MessageToGame>, client: Client) -> Result<()> {
+    mtg_tx
+        .send(MessageToGame::UpdateBoard(BoardMessage::TmpMove(m)))
+        .context("sending msg to game re moving piece temp")
+        .warn();
+
+    let rsp = client
+        .post("http://109.74.205.63:12345/movepiece")
+        .json(&m)
+        .send();
+
+    let outcome = match rsp {
+        Ok(rsp) => match rsp.error_for_status() {
+            Ok(rsp) => {
+                let txt = rsp.text();
+                info!(update=?txt, "Update from server on moving");
+                let taken = txt.map_or(false, |txt| !txt.contains("not"));
+                MoveOutcome::Worked(taken)
+            }
+            Err(e) => {
+                if let Some(sc) = e.status() {
+                    if sc == StatusCode::PRECONDITION_FAILED {
+                        error!("Invalid move");
+                        MoveOutcome::Invalid
+                    } else {
+                        error!(%e, %sc, "Error in input response status code");
+                        MoveOutcome::ReqwestFailed
+                    }
+                } else {
+                    MoveOutcome::ReqwestFailed
+                }
+            }
+        },
+        Err(e) => {
+            error!(%e, "Error in input response");
+            MoveOutcome::ReqwestFailed
+        }
+    };
+
+    mtg_tx
+        .send(MessageToGame::UpdateBoard(BoardMessage::Move(outcome)))
+        .context("piece move result")
+        .warn();
+
+    Ok(())
+}
+
+fn do_invalidate_exit(id: u32, client: Client) {
+    info!("InvalidateKill msg sending");
+
+    let rsp = client
+        .post("http://109.74.205.63:12345/invalidate")
+        .body(id.to_string())
+        .send();
+
+    match rsp {
+        Ok(rsp) => match rsp.error_for_status() {
+            Ok(rsp) => {
+                info!(update=?rsp.text(), "Update from server on invalidating");
+            }
+            Err(e) => warn!(%e, "Error code from server on invalidating"),
+        },
+        Err(e) => error!(%e, "Error invalidating"),
+    }
+
+    info!("Ending refresher");
 }
 
 impl Drop for ListRefresher {

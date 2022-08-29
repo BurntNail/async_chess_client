@@ -17,9 +17,9 @@ pub enum ChessPieceKind {
     Knight = 1,
     ///Pawn - move 2 towards enemy dir on turn 1, 1 on subsequent, take diagonally
     Pawn = 0,
-    ///Queen - [`Bishop`] | [`Rook`]
+    ///Queen - [`Self::Bishop`] | [`Self::Rook`]
     Queen = 4,
-    ///King - [`Queen`] but one tile
+    ///King - [`Self::Queen`] but one tile
     King = 5,
     ///Rook - up,down,left,right
     Rook = 3,

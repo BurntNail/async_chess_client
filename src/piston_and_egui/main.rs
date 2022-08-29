@@ -28,11 +28,11 @@ use tracing_subscriber::{
 };
 use tracing_tree::HierarchicalLayer;
 
-///Module to deal with configurator - [`AsyncChessLauncher`]
+///Module to deal with configurator
 mod egui_launcher;
-///Module to hold the [`ChessGame`] struct and deal with its logic
+///Module to hold the [`game::ChessGame`] struct and deal with its logic
 mod game;
-///Module to hold windowing/rendering logic for the [`ChessGame`]
+///Module to hold windowing/rendering logic for the [`game::ChessGame`]
 mod piston;
 ///Module to hold useful constants for pixel sizes
 pub mod pixel_size_consts {
@@ -70,7 +70,7 @@ fn main() {
 
 ///Function to run the game.
 ///
-/// - It checks whether or not the conf argument was passed, and if so it starts up the [`egui_main`] which launches an [`AsyncChessLauncher`]
+/// - It checks whether or not the conf argument was passed, and if so it starts up the [`egui_main`] which launches an `AsyncChessLauncher`
 /// - If not, then it checks if a configuration exists (and is valid), and if so it starts up the [`piston_main`] with the found configuration.
 /// - If not, then it goes for the [`egui_main`]
 ///

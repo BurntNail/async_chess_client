@@ -47,7 +47,7 @@ pub enum BoardMessage {
     Move(MoveOutcome),
     ///The board hasn't changed since the last update
     UseExisting,
-    ///No connection - use the [`no_connection_list`]
+    ///No connection - use the [`crate::server_interface::no_connection_list`]
     NoConnectionList,
     ///The board has changed, use all of these pieces
     NewList(JSONPieceList),

@@ -1,5 +1,5 @@
 use crate::{
-    board::{Board, Coords},
+    board::{Coords, Board},
     chess::{ChessPiece, ChessPieceKind},
     error_ext::{ErrorExt, ToAnyhowNotErr},
 };
@@ -33,7 +33,7 @@ impl TryInto<Board> for JSONPieceList {
 }
 
 impl JSONPieceList {
-    ///Converts into a true board for the [`chess::Board`].
+    ///Converts into a true pair of lists for the [`Board`].
     ///
     /// # Errors
     /// Can return an error for any collisions or if the pieces are out of bounds

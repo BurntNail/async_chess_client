@@ -4,10 +4,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context;
-
 use super::memcache::MemoryTimedCacher;
-use crate::{prelude::ErrorExt, util::error_ext::ToAnyhowPoisonErr};
+use crate::util::error_ext::MutexExt;
 
 ///Struct to time how long actions in a given scope last.
 pub struct ScopedTimer {
@@ -66,12 +64,7 @@ impl<const N: usize> ThreadSafeScopedToListTimer<N> {
 impl<const N: usize> Drop for ThreadSafeScopedToListTimer<N> {
     fn drop(&mut self) {
         let elapsed = self.1.elapsed();
-        let mut lock = self
-            .0
-            .lock()
-            .ae()
-            .context("locking memtimercache for timer")
-            .unwrap_log_error();
+        let mut lock = self.0.lock_panic("locking memtimercache for timer");
         lock.add(elapsed);
     }
 }

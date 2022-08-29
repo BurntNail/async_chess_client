@@ -62,9 +62,7 @@ impl<S: BoardMoveState> Index<Coords> for Board<S> {
                     .context("index piece")
                     .unwrap_log_error(),
             )
-            .ae()
-            .with_context(|| format!("Getting position from {index:?}"))
-            .unwrap_log_error()
+            .unwrap_log_error_with_context(|| format!("Getting position from {index:?}"))
     }
 }
 
@@ -82,9 +80,7 @@ impl<S: BoardMoveState> IndexMut<Coords> for Board<S> {
                     .context("index piece")
                     .unwrap_log_error(),
             )
-            .ae()
-            .with_context(|| format!("Getting position mutably from {index:?}"))
-            .unwrap_log_error()
+            .unwrap_log_error_with_context(|| format!("Getting position mutably from {index:?}"))
     }
 }
 

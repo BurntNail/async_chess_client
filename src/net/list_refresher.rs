@@ -16,7 +16,7 @@ use std::{
 use crate::{
     prelude::{DoOnInterval, Either, ErrorExt},
     util::{
-        error_ext::{ToAnyhowPoisonErr, ToAnyhowThreadErr},
+        error_ext::{MutexExt, ToAnyhowThreadErr},
         time_based_structs::{
             memcache::MemoryTimedCacher, scoped_timers::ThreadSafeScopedToListTimer,
         },
@@ -96,8 +96,8 @@ fn run_loop(
     mtg_tx: Sender<MessageToGame>,
     id: u32,
 ) -> Result<()> {
-    let change_inflight = Arc::new(Mutex::new(()));
-    let req_inflight = Arc::new(Mutex::new(()));
+    let update_req_inflight = Arc::new(AtomicBool::new(false));
+
     let client = ClientBuilder::default()
         .user_agent("JackyBoi/AsyncChess")
         .build()
@@ -105,20 +105,16 @@ fn run_loop(
         .unwrap_log_error();
     let mut handles: Vec<JoinHandle<Result<()>>> = vec![]; //technically could be an option but easier for it to be a vec
 
-    let mut refresh_timer = DoOnInterval::new(Duration::from_millis(500));
+    let refresh_timer = Arc::new(Mutex::new(DoOnInterval::new(Duration::from_millis(500)))); //timer for updating board
     let reqwest_error_at_last_refresh = Arc::new(AtomicBool::new(false));
 
-    let request_timer = Arc::new(Mutex::new(MemoryTimedCacher::<_, 150>::new(None)));
-    let mut request_print_timer = DoOnInterval::new(Duration::from_millis(2500));
+    let request_timer = Arc::new(Mutex::new(MemoryTimedCacher::<_, 150>::new(None))); //cacher for printing av requests ttr
+    let mut request_print_timer = DoOnInterval::new(Duration::from_millis(2500)); //timer for when to print av request ttr
 
     while let Ok(msg) = mtw_rx.recv() {
         {
             let rt = request_timer.clone();
-            let lock = rt
-                .lock()
-                .ae()
-                .context("unlocking mtc mutex")
-                .unwrap_log_error();
+            let lock = rt.lock_panic("unlocking mtc mutex");
 
             if let Some(_doiu) = request_print_timer.get_updater() {
                 let avg_ttr = lock.average_u32();
@@ -146,84 +142,67 @@ fn run_loop(
 
         match msg {
             MessageToWorker::UpdateList | MessageToWorker::UpdateNOW => {
-                let _doiu = {
-                    if msg == MessageToWorker::UpdateNOW {
-                        None //continue regardless
-                    } else {
-                        let doiu = refresh_timer.get_updater();
-                        if let Some(doiu) = doiu {
-                            Some(doiu) //doi says we can
-                        } else {
-                            continue; //next in loop
-                        }
-                    }
+                let can = if msg == MessageToWorker::UpdateNOW {
+                    true
+                } else {
+                    refresh_timer.lock_panic("refresh timer").can_do()
                 };
+                if !can {
+                    continue;
+                }
 
-                let (req_inflight, reqwest_error_at_last_refresh, mtg_tx, client, request_timer) = (
-                    req_inflight.clone(),
+                let (
+                    update_req_inflight,
+                    reqwest_error_at_last_refresh,
+                    mtg_tx,
+                    client,
+                    request_timer,
+                    refresh_timer,
+                ) = (
+                    update_req_inflight.clone(),
                     reqwest_error_at_last_refresh.clone(),
                     mtg_tx.clone(),
                     client.clone(),
                     request_timer.clone(),
+                    refresh_timer.clone(),
                 );
                 handles.push(std::thread::spawn(move || {
-                    let _lock = req_inflight
-                        .lock()
-                        .ae()
-                        .context("locking inflight mutex")
-                        .unwrap_log_error();
+                    if !update_req_inflight.load(Ordering::SeqCst) {
+                        update_req_inflight.store(true, Ordering::SeqCst);
+                        let _st = ThreadSafeScopedToListTimer::new(request_timer);
 
-                    let _st = ThreadSafeScopedToListTimer::new(request_timer);
-                    do_update_list(id, reqwest_error_at_last_refresh, mtg_tx, client)
+                        let res = do_update_list(id, reqwest_error_at_last_refresh, mtg_tx, client);
+
+                        update_req_inflight.store(false, Ordering::SeqCst);
+                        refresh_timer.lock_panic("refresh timer").update_timer();
+                        res
+                    } else {
+                        Ok(())
+                    }
                 }));
             }
             MessageToWorker::RestartBoard => {
-                let (client, rt, inflight) = (
-                    client.clone(),
-                    request_timer.clone(),
-                    change_inflight.clone(),
-                );
+                let (client, rt) = (client.clone(), request_timer.clone());
                 //not added to the handles list because I don't care about the results
                 std::thread::spawn(move || {
-                    let _lock = inflight
-                        .lock()
-                        .ae()
-                        .context("locking inflight mutex")
-                        .unwrap_log_error();
-
                     let _st = ThreadSafeScopedToListTimer::new(rt);
                     do_restart_board(id, client);
                 });
             }
             MessageToWorker::MakeMove(m) => {
-                let (mtg_tx, client, rt, inflight) = (
-                    mtg_tx.clone(),
-                    client.clone(),
-                    request_timer.clone(),
-                    change_inflight.clone(),
-                );
+                let (mtg_tx, client, rt) = (mtg_tx.clone(), client.clone(), request_timer.clone());
                 handles.push(std::thread::spawn(move || {
-                    let _lock = inflight
-                        .lock()
-                        .ae()
-                        .context("locking inflight mutex")
-                        .unwrap_log_error();
-
                     let _st = ThreadSafeScopedToListTimer::new(rt);
                     do_make_move(m, mtg_tx, client)
                 }));
             }
             MessageToWorker::InvalidateKill => {
-                let _lock = req_inflight
-                    .lock()
-                    .ae()
-                    .context("locking inflight mutex")
-                    .unwrap_log_error();
-
                 do_invalidate_exit(id, client);
                 break;
             }
         }
+
+        //NB: Can have no logic here as there are continue statements
     }
 
     Ok(())

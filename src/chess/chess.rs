@@ -1,8 +1,4 @@
-use crate::{
-    prelude::{ErrorExt, SError},
-    util::error_ext::ToAnyhowNotErr,
-};
-use anyhow::Context;
+use crate::{prelude::SError, util::error_ext::ToAnyhowNotErr};
 use std::fmt::{Debug, Formatter};
 use strum::{Display, EnumIter, IntoEnumIterator};
 
@@ -109,8 +105,6 @@ impl PartialOrd for ChessPiece {
 impl Ord for ChessPiece {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.partial_cmp(other)
-            .ae()
-            .with_context(|| format!("comparing {self:?} to {other:?}"))
-            .unwrap_log_error()
+            .unwrap_log_error_with_context(|| format!("comparing {self:?} to {other:?}"))
     }
 }

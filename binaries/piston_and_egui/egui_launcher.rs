@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use async_chess_client::error_ext::{ErrorExt, ToAnyhowNotErr};
+use async_chess_client::{prelude::ErrorExt, util::error_ext::ToAnyhowNotErr};
 use directories::ProjectDirs;
 use eframe::{egui, App};
 use serde_json::to_string;

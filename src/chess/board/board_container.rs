@@ -1,6 +1,8 @@
 use std::ops::{Index, IndexMut};
 
-use crate::{either::Either, board::{Board, CanMovePiece, NeedsMoveUpdate}, chess::ChessPiece, coords::Coords};
+use crate::{prelude::{Either, Coords, ChessPiece}};
+
+use super::board::{Board, CanMovePiece, NeedsMoveUpdate};
 
 ///Struct to hold board states for utility purposes
 pub type BoardContainer = Either<Board<CanMovePiece>, Board<NeedsMoveUpdate>>;

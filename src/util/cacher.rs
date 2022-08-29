@@ -1,13 +1,10 @@
-use crate::{
-    error_ext::{ErrorExt, ToAnyhowNotErr},
-    time_based_structs::ScopedTimer,
-};
-use anyhow::{Context, Result};
+use std::{path::PathBuf, collections::HashMap};
+use crate::prelude::{Result, ScopedTimer, ErrorExt};
+use anyhow::Context;
+use piston_window::{G2dTexture, G2dTextureContext, PistonWindow, TextureSettings, Filter, Flip, Texture};
 use find_folder::Search::ParentsThenKids;
-use piston_window::{
-    Filter, Flip, G2dTexture, G2dTextureContext, PistonWindow, Texture, TextureSettings,
-};
-use std::{collections::HashMap, path::PathBuf};
+
+use super::error_ext::ToAnyhowNotErr;
 
 ///Struct to hold a cache of [`G2dTexture`]s
 pub struct Cacher {

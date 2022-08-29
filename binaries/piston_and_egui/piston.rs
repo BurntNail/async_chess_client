@@ -3,7 +3,7 @@ use crate::{
     pixel_size_consts::{BOARD_S, LEFT_BOUND, RIGHT_BOUND},
 };
 use anyhow::Context;
-use async_chess_client::{error_ext::ErrorExt, time_based_structs::MemoryTimedCacher};
+use async_chess_client::{prelude::ErrorExt, util::time_based_structs::memcache::MemoryTimedCacher};
 use piston_window::{
     Button, Key, MouseButton, MouseCursorEvent, PistonWindow, PressEvent, RenderEvent, UpdateEvent,
     Window, WindowSettings,

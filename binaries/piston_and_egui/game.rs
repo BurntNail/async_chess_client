@@ -3,14 +3,7 @@ use crate::{
     pixel_size_consts::{BOARD_S, BOARD_TILE_S, LEFT_BOUND_PADDING, RIGHT_BOUND, TILE_S},
 };
 use anyhow::{Context as _, Result};
-use async_chess_client::{
-    board::{Board},
-    cacher::Cacher,
-    either::Either,
-    error_ext::{ErrorExt, ToAnyhowErr},
-    list_refresher::{BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome},
-    server_interface::{no_connection_list, JSONMove}, board_container::BoardContainer, coords::Coords,
-};
+use async_chess_client::{util::{cacher::Cacher, error_ext::ToAnyhowErr}, chess::board::{board_container::BoardContainer, board::Board}, prelude::{Coords, ErrorExt, Either}, net::{list_refresher::{ListRefresher, MessageToWorker, MessageToGame, BoardMessage, MoveOutcome}, server_interface::{JSONMove, no_connection_list}}};
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use std::sync::mpsc::TryRecvError;

@@ -18,35 +18,35 @@
 
 //TODO: add docu-examples
 
-///Module to hold [`board::Board`] struct
-pub mod board;
-///Module to hold [`cacher::Cacher`] struct
-pub mod cacher;
-///Module to hold chess-related utils
+
+///Module to hold all chess-related modules
 pub mod chess;
-///Module to hold [`either::Either`]
-pub mod either;
-///Module to hold Error Extension traits
-pub mod error_ext;
-///Module to hold the [`list_refresher::ListRefresher`] struct
-pub mod list_refresher;
-///Module to deal with JSON responses from the server - [`server_interface::JSONMove`], [`server_interface::JSONPiece`], and [`server_interface::JSONPieceList`]
-pub mod server_interface;
-///Module to hold structs which deal with time
-pub mod time_based_structs;
-///Module to hold a container for the board for ease of use and utility functions
-pub mod board_container;
-///Module to hold coordinates
-pub mod coords;
+///Module to hold all networking modules
+pub mod net;
+///Module to hold all utility modules
+pub mod util;
 
-#[macro_use]
-extern crate tracing;
-
-#[macro_use]
-extern crate anyhow;
+///Module to hold commonly used structs, enums and functions that should be in a prelude
+pub mod prelude {
+    pub use anyhow::{Result, Error};
+    pub use crate::{
+        chess::{
+            coords::Coords,
+            chess::{ChessPiece, ChessPieceKind}
+        },
+        util::{time_based_structs::{scoped_timers::ScopedTimer, do_on_interval::DoOnInterval}, either::Either, error_ext::ErrorExt},
+    };
+    pub use std::error::Error as SError;
+}
 
 ///Module to hold trait private contents
 pub(crate) mod crate_private {
     ///Trait that library users can't implement
     pub trait Sealed {}
 }
+
+#[macro_use]
+extern crate tracing;
+
+#[macro_use]
+extern crate anyhow;

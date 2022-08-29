@@ -22,6 +22,6 @@ tracing-tree = "0.2.1"
 
 [[bin]]
 name = "piston_and_egui"
-path = "src/piston_and_egui/main.rs"
+path = "binaries/piston_and_egui/main.rs"
 
 [features]

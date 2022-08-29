@@ -15,7 +15,7 @@
 
 use crate::{egui_launcher::egui_main, piston::piston_main};
 use anyhow::{Context, Result};
-use async_chess_client::error_ext::{ErrorExt, ToAnyhowNotErr};
+use async_chess_client::{prelude::ErrorExt, util::error_ext::ToAnyhowNotErr};
 use directories::ProjectDirs;
 use piston::PistonConfig;
 use serde_json::from_str;

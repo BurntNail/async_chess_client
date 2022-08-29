@@ -1,8 +1,11 @@
-use crate::{prelude::{Error, ChessPiece, ChessPieceKind, Coords, Result, ErrorExt}, util::error_ext::ToAnyhowNotErr};
+use crate::{
+    chess::board::board::{Board, CanMovePiece},
+    prelude::{ChessPiece, ChessPieceKind, Coords, Error, ErrorExt, Result},
+    util::error_ext::ToAnyhowNotErr,
+};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
-use crate::chess::board::board::{CanMovePiece, Board};
 
 ///Unit struct to hold a vector of [`JSONPiece`]s.
 #[derive(Deserialize, Debug, Default)]

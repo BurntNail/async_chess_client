@@ -1,7 +1,9 @@
-use std::{time::{Instant, Duration}, marker::PhantomData};
+use std::{
+    marker::PhantomData,
+    time::{Duration, Instant},
+};
 
-use crate::{generic_enum, prelude::Either};
-use crate::crate_private::Sealed;
+use crate::{crate_private::Sealed, generic_enum, prelude::Either};
 
 generic_enum!((DoOnIntervalMode -> "Trait for how `DoOnInterval` should update the timer") => (GiveUpdaters -> "Give updaters that update the timer when they are dropped"), (UpdateOnCheck -> "Update the timer when if we can do the action when we check"));
 

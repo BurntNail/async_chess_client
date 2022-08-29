@@ -1,6 +1,6 @@
 use std::ops::{Index, IndexMut};
 
-use crate::{prelude::{Either, Coords, ChessPiece}};
+use crate::prelude::{ChessPiece, Coords, Either};
 
 use super::board::{Board, CanMovePiece, NeedsMoveUpdate};
 

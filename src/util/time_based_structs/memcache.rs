@@ -1,8 +1,11 @@
-use std::{mem::MaybeUninit, time::Duration};
-use std::ops::{AddAssign, Div};
-use crate::prelude::DoOnInterval;
-use std::fmt::Debug;
 use super::do_on_interval::UpdateOnCheck;
+use crate::prelude::DoOnInterval;
+use std::{
+    fmt::Debug,
+    mem::MaybeUninit,
+    ops::{AddAssign, Div},
+    time::Duration,
+};
 
 ///Struct to hold a list of items that only get updated on a [`DoOnInterval`], with a circular cache that overwrites the oldest items if there isn't any free space.
 #[derive(Debug)]
@@ -163,4 +166,3 @@ macro_rules! average_fp_impl {
 
 average_impl!(u8 => average_u8, u16 => average_u16, u32 => average_u32, u64 => average_u64, u128 => average_u128, i8 => average_i8, i16 => average_i16, i32 => average_i32, i64 => average_i64, i128 => average_i128);
 average_fp_impl!(f32 => average_f32, f64 => average_f64);
-

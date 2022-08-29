@@ -1,7 +1,10 @@
-use std::fmt::{Formatter, Debug};
+use crate::{
+    prelude::{ErrorExt, SError},
+    util::error_ext::ToAnyhowNotErr,
+};
 use anyhow::Context;
-use strum::{EnumIter, Display, IntoEnumIterator};
-use crate::{prelude::{SError, ErrorExt}, util::error_ext::ToAnyhowNotErr};
+use std::fmt::{Debug, Formatter};
+use strum::{Display, EnumIter, IntoEnumIterator};
 
 ///Enum with all of the chess piece kinds
 #[derive(EnumIter, Display, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]

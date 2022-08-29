@@ -1,9 +1,13 @@
-use std::{time::{Instant, Duration}, fmt::Display, sync::{Arc, Mutex}};
+use std::{
+    fmt::Display,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use anyhow::Context;
 
-use crate::{util::error_ext::ToAnyhowPoisonErr, prelude::ErrorExt};
 use super::memcache::MemoryTimedCacher;
+use crate::{prelude::ErrorExt, util::error_ext::ToAnyhowPoisonErr};
 
 ///Struct to time how long actions in a given scope last.
 pub struct ScopedTimer {

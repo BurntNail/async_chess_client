@@ -1,10 +1,17 @@
-use std::{marker::PhantomData, ops::{Index, IndexMut}};
+use std::{
+    marker::PhantomData,
+    ops::{Index, IndexMut},
+};
 
 use anyhow::Context;
 
-use crate::{generic_enum, net::server_interface::{JSONMove, JSONPieceList}, util::error_ext::ToAnyhowNotErr, prelude::ErrorExt};
-use crate::prelude::{ChessPiece, ChessPieceKind, Coords, Result};
-use crate::crate_private::Sealed;
+use crate::{
+    crate_private::Sealed,
+    generic_enum,
+    net::server_interface::{JSONMove, JSONPieceList},
+    prelude::{ChessPiece, ChessPieceKind, Coords, ErrorExt, Result},
+    util::error_ext::ToAnyhowNotErr,
+};
 
 generic_enum!((BoardMoveState -> "Holds the current state of moving pieces in the board to ensure no logic errors") => (CanMovePiece -> "The board can currently move a new piece"), (NeedsMoveUpdate -> "The board now needs an update on what happened to the piece it moved"));
 

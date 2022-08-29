@@ -18,7 +18,6 @@
 
 //TODO: add docu-examples
 
-
 ///Module to hold all chess-related modules
 pub mod chess;
 ///Module to hold all networking modules
@@ -28,14 +27,18 @@ pub mod util;
 
 ///Module to hold commonly used structs, enums and functions that should be in a prelude
 pub mod prelude {
-    pub use anyhow::{Result, Error};
     pub use crate::{
         chess::{
+            chess::{ChessPiece, ChessPieceKind},
             coords::Coords,
-            chess::{ChessPiece, ChessPieceKind}
         },
-        util::{time_based_structs::{scoped_timers::ScopedTimer, do_on_interval::DoOnInterval}, either::Either, error_ext::ErrorExt},
+        util::{
+            either::Either,
+            error_ext::ErrorExt,
+            time_based_structs::{do_on_interval::DoOnInterval, scoped_timers::ScopedTimer},
+        },
     };
+    pub use anyhow::{Error, Result};
     pub use std::error::Error as SError;
 }
 

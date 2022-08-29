@@ -3,7 +3,17 @@ use crate::{
     pixel_size_consts::{BOARD_S, BOARD_TILE_S, LEFT_BOUND_PADDING, RIGHT_BOUND, TILE_S},
 };
 use anyhow::{Context as _, Result};
-use async_chess_client::{util::{cacher::Cacher, error_ext::ToAnyhowErr}, chess::board::{board_container::BoardContainer, board::Board}, prelude::{Coords, ErrorExt, Either}, net::{list_refresher::{ListRefresher, MessageToWorker, MessageToGame, BoardMessage, MoveOutcome}, server_interface::{JSONMove, no_connection_list}}};
+use async_chess_client::{
+    chess::board::{board::Board, board_container::BoardContainer},
+    net::{
+        list_refresher::{
+            BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome,
+        },
+        server_interface::{no_connection_list, JSONMove},
+    },
+    prelude::{Coords, Either, ErrorExt},
+    util::{cacher::Cacher, error_ext::ToAnyhowErr},
+};
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use std::sync::mpsc::TryRecvError;
@@ -300,18 +310,25 @@ impl ChessGame {
                             bail!("need move update before can do: {m:?}");
                         }
                     }
-                    BoardMessage::Move(outcome) => if let Either::Right(bo) = self.board.clone() { //TODO: work out way to remove these clones without the faff of maybeuninit
-                        match outcome {
-                            MoveOutcome::Worked(taken) => self.board = Either::Left(bo.move_worked(taken)),
-                            MoveOutcome::Invalid | MoveOutcome::ReqwestFailed => {
-                                info!("Resetting pieces");
-                                self.board = Either::Left(bo.undo_move());
+                    BoardMessage::Move(outcome) => {
+                        if let Either::Right(bo) = self.board.clone() {
+                            //TODO: work out way to remove these clones without the faff of maybeuninit
+                            match outcome {
+                                MoveOutcome::Worked(taken) => {
+                                    self.board = Either::Left(bo.move_worked(taken))
+                                }
+                                MoveOutcome::Invalid | MoveOutcome::ReqwestFailed => {
+                                    info!("Resetting pieces");
+                                    self.board = Either::Left(bo.undo_move());
+                                }
                             }
+                        } else {
+                            bail!("need move to update with outcome: {outcome:?}");
                         }
-                    } else {
-                        bail!("need move to update with outcome: {outcome:?}");
-                    },
-                    BoardMessage::NoConnectionList => self.board = Either::Left(no_connection_list()),
+                    }
+                    BoardMessage::NoConnectionList => {
+                        self.board = Either::Left(no_connection_list())
+                    }
                     BoardMessage::NewList(l) => self.board = Either::Left(Board::new_json(l)?),
                     BoardMessage::UseExisting => {}
                 },

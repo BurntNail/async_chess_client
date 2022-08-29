@@ -4,11 +4,12 @@ use crate::{
 };
 use anyhow::{Context as _, Result};
 use async_chess_client::{
-    board::{Board, Coords},
+    board::{Board},
     cacher::Cacher,
+    either::Either,
     error_ext::{ErrorExt, ToAnyhowErr},
     list_refresher::{BoardMessage, ListRefresher, MessageToGame, MessageToWorker, MoveOutcome},
-    server_interface::{no_connection_list, JSONMove},
+    server_interface::{no_connection_list, JSONMove}, board_container::BoardContainer, coords::Coords,
 };
 use graphics::DrawState;
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
@@ -21,7 +22,7 @@ pub struct ChessGame {
     ///The cacher of all the assets
     cache: Cacher,
     ///The Chess Board
-    board: Board,
+    board: BoardContainer,
     ///The coordinates of the piece last pressed. Used for selected sprite location.
     last_pressed: Coords,
     ///The coordinates before - useful for rolling back invalid moves.
@@ -38,11 +39,83 @@ impl ChessGame {
         Ok(Self {
             id,
             cache: Cacher::new(win).context("making cacher")?,
-            board: Board::default(),
+            board: BoardContainer::default(),
             refresher: ListRefresher::new(id),
             last_pressed: Coords::OffBoard,
             ex_last_pressed: Coords::OffBoard,
         })
+    }
+
+    ///Handles mouse input
+    ///
+    /// # Errors
+    /// - Can fail if there is an error sending the message to the [`ListRefresher`]
+    #[tracing::instrument(skip(self))]
+    pub fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) -> Result<()> {
+        match std::mem::take(&mut self.last_pressed) {
+            Coords::OffBoard => {
+                let lp_x = to_board_coord(mouse_pos.0, mult);
+                let lp_y = to_board_coord(mouse_pos.1, mult);
+
+                let coord = (lp_x, lp_y).try_into()?;
+
+                if self.board.piece_exists_at_location(coord) {
+                    self.last_pressed = coord;
+                }
+            }
+            Coords::OnBoard(x, y) => {
+                //Deal with second press
+                let current_press = {
+                    let lp_x = to_board_coord(mouse_pos.0, mult);
+                    let lp_y = to_board_coord(mouse_pos.1, mult);
+                    (lp_x, lp_y)
+                };
+
+                info!(last_pos=?(x, y), new_pos=?current_press, "Starting moving");
+
+                self.refresher
+                    .send_msg(MessageToWorker::MakeMove(JSONMove::new(
+                        self.id,
+                        u32::from(x),
+                        u32::from(y),
+                        current_press.0,
+                        current_press.1,
+                    )))
+                    .context("sending a message to the worker re moving")?;
+
+                self.ex_last_pressed = Coords::OnBoard(x, y);
+            }
+        }
+
+        Ok(())
+    }
+
+    ///Sends a message to the [`ListRefresher`] to clear the board for a new game.
+    ///
+    /// # Errors:
+    /// - If there is an error sending the message
+    #[tracing::instrument(skip(self))]
+    pub fn restart_board(&mut self) -> Result<()> {
+        self.refresher
+            .send_msg(MessageToWorker::RestartBoard)
+            .context("sending restart msg to board")
+    }
+
+    ///Sends a message to the [`ListRefresher`] to tell the server we're done
+    ///
+    /// # Errors:
+    /// - If there is an error sending the message
+    #[tracing::instrument(skip(self))]
+    pub fn exit(self) -> Result<()> {
+        self.refresher
+            .send_msg(MessageToWorker::InvalidateKill)
+            .context("sending invalidatekill msg to board")
+    }
+
+    ///Clears the mouse input - means that a different piece can be selected.
+    pub fn clear_mouse_input(&mut self) {
+        self.last_pressed = Coords::OffBoard;
+        self.ex_last_pressed = Coords::OffBoard;
     }
 
     // #[tracing::instrument(skip(self, ctx, graphics, _device))]
@@ -215,50 +288,6 @@ impl ChessGame {
         Ok(())
     }
 
-    ///Handles mouse input
-    ///
-    /// # Errors
-    /// - Can fail if there is an error sending the message to the [`ListRefresher`]
-    #[tracing::instrument(skip(self))]
-    pub fn mouse_input(&mut self, mouse_pos: (f64, f64), mult: f64) -> Result<()> {
-        match std::mem::take(&mut self.last_pressed) {
-            Coords::OffBoard => {
-                let lp_x = to_board_coord(mouse_pos.0, mult);
-                let lp_y = to_board_coord(mouse_pos.1, mult);
-
-                let coord = (lp_x, lp_y).try_into()?;
-
-                if self.board.piece_exists_at_location(coord) {
-                    self.last_pressed = coord;
-                }
-            }
-            Coords::OnBoard(x, y) => {
-                //Deal with second press
-                let current_press = {
-                    let lp_x = to_board_coord(mouse_pos.0, mult);
-                    let lp_y = to_board_coord(mouse_pos.1, mult);
-                    (lp_x, lp_y)
-                };
-
-                info!(last_pos=?(x, y), new_pos=?current_press, "Starting moving");
-
-                self.refresher
-                    .send_msg(MessageToWorker::MakeMove(JSONMove::new(
-                        self.id,
-                        u32::from(x),
-                        u32::from(y),
-                        current_press.0,
-                        current_press.1,
-                    )))
-                    .context("sending a message to the worker re moving")?;
-
-                self.ex_last_pressed = Coords::OnBoard(x, y);
-            }
-        }
-
-        Ok(())
-    }
-
     ///Updates the board using messages from the [`ListRefresher`]
     ///
     /// Should be called ASAP after instantiating game, and often afterwards.
@@ -272,17 +301,25 @@ impl ChessGame {
             Ok(msg) => match msg {
                 MessageToGame::UpdateBoard(msg) => match msg {
                     BoardMessage::TmpMove(m) => {
-                        self.board.make_move(m);
-                    }
-                    BoardMessage::Move(outcome) => match outcome {
-                        MoveOutcome::Worked(taken) => self.board.move_worked(taken),
-                        MoveOutcome::Invalid | MoveOutcome::ReqwestFailed => {
-                            self.board.undo_move();
-                            info!("Resetting pieces");
+                        if let Either::Left(bo) = self.board.clone() {
+                            self.board = Either::Right(bo.make_move(m));
+                        } else {
+                            bail!("need move update before can do: {m:?}");
                         }
+                    }
+                    BoardMessage::Move(outcome) => if let Either::Right(bo) = self.board.clone() { //TODO: work out way to remove these clones without the faff of maybeuninit
+                        match outcome {
+                            MoveOutcome::Worked(taken) => self.board = Either::Left(bo.move_worked(taken)),
+                            MoveOutcome::Invalid | MoveOutcome::ReqwestFailed => {
+                                info!("Resetting pieces");
+                                self.board = Either::Left(bo.undo_move());
+                            }
+                        }
+                    } else {
+                        bail!("need move to update with outcome: {outcome:?}");
                     },
-                    BoardMessage::NoConnectionList => self.board = no_connection_list(),
-                    BoardMessage::NewList(l) => self.board = Board::new_json(l)?,
+                    BoardMessage::NoConnectionList => self.board = Either::Left(no_connection_list()),
+                    BoardMessage::NewList(l) => self.board = Either::Left(Board::new_json(l)?),
                     BoardMessage::UseExisting => {}
                 },
             },
@@ -301,34 +338,6 @@ impl ChessGame {
                 MessageToWorker::UpdateList
             })
             .ae()
-    }
-
-    ///Sends a message to the [`ListRefresher`] to clear the board for a new game.
-    ///
-    /// # Errors:
-    /// - If there is an error sending the message
-    #[tracing::instrument(skip(self))]
-    pub fn restart_board(&mut self) -> Result<()> {
-        self.refresher
-            .send_msg(MessageToWorker::RestartBoard)
-            .context("sending restart msg to board")
-    }
-
-    ///Sends a message to the [`ListRefresher`] to tell the server we're done
-    ///
-    /// # Errors:
-    /// - If there is an error sending the message
-    #[tracing::instrument(skip(self))]
-    pub fn exit(self) -> Result<()> {
-        self.refresher
-            .send_msg(MessageToWorker::InvalidateKill)
-            .context("sending invalidatekill msg to board")
-    }
-
-    ///Clears the mouse input - means that a different piece can be selected.
-    pub fn clear_mouse_input(&mut self) {
-        self.last_pressed = Coords::OffBoard;
-        self.ex_last_pressed = Coords::OffBoard;
     }
 }
 

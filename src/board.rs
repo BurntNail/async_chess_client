@@ -1,135 +1,22 @@
+use crate::{crate_private::Sealed, coords::Coords};
 use crate::{
     chess::{ChessPiece, ChessPieceKind},
     error_ext::{ErrorExt, ToAnyhowNotErr},
+    generic_enum,
     server_interface::{JSONMove, JSONPieceList},
 };
 use anyhow::{Context, Result};
 use std::{
     fmt::Debug,
+    marker::PhantomData,
     ops::{Index, IndexMut},
 };
 
-///Utility type to hold a set of [`u8`] coordinates in an `(x, y)` format. Can also represent a piece which was taken.
-///
-/// (0, 0) is at the top left, with y counting the rows, and x counting the columns
-#[derive(Copy, Clone, PartialEq, Eq, Default)]
-pub enum Coords {
-    ///The coordinate is currently off the board, or a taken piece
-    #[default]
-    OffBoard,
-    ///The coordinate is currently on the board at these coordinates.
-    OnBoard(u8, u8), //could use one u8 but cba
-}
-
-impl Debug for Coords {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Coords::OffBoard => f.debug_struct("Coords").finish(),
-            Coords::OnBoard(x, y) => f
-                .debug_struct("Coords")
-                .field("x", x)
-                .field("y", y)
-                .finish(),
-        }
-    }
-}
-
-impl TryFrom<(i32, i32)> for Coords {
-    type Error = anyhow::Error;
-
-    fn try_from((x, y): (i32, i32)) -> Result<Self, Self::Error> {
-        if x == -1 && y == -1 {
-            return Ok(Self::OffBoard);
-        }
-
-        if x < 0 {
-            bail!("x < 0")
-        }
-        if x > 7 {
-            bail!("x > 7")
-        }
-        if y < 0 {
-            bail!("y < 0")
-        }
-        if y > 7 {
-            bail!("y > 7")
-        }
-
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        Ok(Self::OnBoard(x as u8, y as u8)) //conversion works as all checked above
-    }
-}
-impl TryFrom<(u32, u32)> for Coords {
-    type Error = anyhow::Error;
-
-    fn try_from((x, y): (u32, u32)) -> Result<Self, Self::Error> {
-        if x > 7 {
-            bail!("x > 7")
-        }
-        if y > 7 {
-            bail!("y > 7")
-        }
-
-        #[allow(clippy::cast_possible_truncation)]
-        Ok(Self::OnBoard(x as u8, y as u8)) //conversion works as all checked above
-    }
-}
-
-impl From<Coords> for Option<(u8, u8)> {
-    fn from(c: Coords) -> Self {
-        c.to_option()
-    }
-}
-impl From<(u8, u8)> for Coords {
-    fn from((x, y): (u8, u8)) -> Self {
-        Self::OnBoard(x, y)
-    }
-}
-
-impl Coords {
-    ///Provides an index with which to index a 1D array using the 2D coords, assuming there are 8 rows per column
-    #[must_use]
-    pub fn to_usize(&self) -> Option<usize> {
-        match self {
-            Coords::OffBoard => None,
-            Coords::OnBoard(x, y) => Some((y * 8 + x) as usize),
-        }
-    }
-    ///Provides the X part of the coordinate
-    #[must_use]
-    pub fn x(&self) -> Option<u8> {
-        self.to_option().map(|(x, _)| x)
-    }
-    ///Provides the Y part of the coordinate
-    #[must_use]
-    pub fn y(&self) -> Option<u8> {
-        self.to_option().map(|(_, y)| y)
-    }
-
-    ///Provides a utility function for turning `Coords` to an `Option<(u8, u8)>`
-    #[must_use]
-    pub fn to_option(&self) -> Option<(u8, u8)> {
-        match *self {
-            Coords::OffBoard => None,
-            Coords::OnBoard(x, y) => Some((x, y)),
-        }
-    }
-
-    ///Utility function for whether or not it is taken
-    #[must_use]
-    pub fn is_taken(&self) -> bool {
-        matches!(self, Coords::OffBoard)
-    }
-
-    ///Utility function for whether or not it is on the board
-    #[must_use]
-    pub fn is_on_board(&self) -> bool {
-        matches!(self, Coords::OnBoard(_, _))
-    }
-}
+generic_enum!((BoardMoveState -> "Holds the current state of moving pieces in the board to ensure no logic errors") => (CanMovePiece -> "The board can currently move a new piece"), (NeedsMoveUpdate -> "The board now needs an update on what happened to the piece it moved"));
 
 ///Struct to hold a Chess Board
-pub struct Board {
+#[derive(Clone, Debug)]
+pub struct Board<STATE: BoardMoveState> {
     ///1D vector to hold all of the [`ChessPiece`]s - where the index of each piece is `y * 8 + x`
     ///
     ///`None` signifies no piece, and `Some` signifies a piece
@@ -142,19 +29,23 @@ pub struct Board {
     ///
     ///Holds the move made, the piece taken, and what the original kind was
     previous: Option<(JSONMove, Option<ChessPiece>, ChessPieceKind)>,
+
+    ///[`PhantomData`] to make sure `STATE` isn't optimised away
+    _pd: PhantomData<STATE>,
 }
 
-impl Default for Board {
+impl Default for Board<CanMovePiece> {
     fn default() -> Self {
         Self {
             pieces: [None; 64],
             taken: Vec::with_capacity(32),
             previous: None,
+            _pd: PhantomData,
         }
     }
 }
 
-impl Index<Coords> for Board {
+impl<S: BoardMoveState> Index<Coords> for Board<S> {
     type Output = Option<ChessPiece>;
 
     ///Function to index the pieces
@@ -176,7 +67,7 @@ impl Index<Coords> for Board {
     }
 }
 
-impl IndexMut<Coords> for Board {
+impl<S: BoardMoveState> IndexMut<Coords> for Board<S> {
     ///Function to mutably index the pieces
     ///
     /// # Panics
@@ -196,9 +87,26 @@ impl IndexMut<Coords> for Board {
     }
 }
 
-//TODO: Make this into a generic for Board<MakeMove> vs Board<DealWithMove>
 //more like the rocket than the other examples
-impl Board {
+impl<STATE: BoardMoveState> Board<STATE> {
+    ///Checks whether or not a piece exists at a given set of coordinates
+    #[must_use]
+    pub fn piece_exists_at_location(&self, coords: Coords) -> bool {
+        if let Some(c) = coords.to_usize() {
+            matches!(self.pieces.get(c), Some(Some(_)))
+        } else {
+            false
+        }
+    }
+
+    ///Gets a clone of all the pieces which have been taken
+    #[must_use]
+    pub fn get_taken(&self) -> Vec<ChessPiece> {
+        self.taken.clone()
+    }
+}
+
+impl Board<CanMovePiece> {
     ///Create a new board from a [`JSONPieceList`], using `JSONPieceList::into_game_list`
     ///
     /// # Errors
@@ -223,7 +131,7 @@ impl Board {
     /// # Panics
     /// - Can panic if the move is OOB, or there is no piece at the current location, or the last move wasn't cleared
     #[tracing::instrument(skip(self))]
-    pub fn make_move(&mut self, m: JSONMove) {
+    pub fn make_move(mut self, m: JSONMove) -> Board<NeedsMoveUpdate> {
         if self.previous.is_some() {
             Err::<(), _>("Move made without clearing").unwrap_log_error();
         }
@@ -247,13 +155,22 @@ impl Board {
                 p.kind = ChessPieceKind::Queen;
             }
         }
-    }
 
+        Board {
+            pieces: self.pieces,
+            taken: self.taken,
+            previous: self.previous,
+            _pd: PhantomData,
+        }
+    }
+}
+
+impl Board<NeedsMoveUpdate> {
     ///Undos the most recent move
     ///
     /// # Errors
     /// Can return an error if there is no longer a piece at the coordinates the piece was moved to
-    pub fn undo_move(&mut self) {
+    pub fn undo_move(mut self) -> Board<CanMovePiece> {
         if let Some((m, taken, old_kind)) = std::mem::take(&mut self.previous) {
             self[m.current_coords()] = self[m.new_coords()];
             self[m.new_coords()] = taken;
@@ -264,13 +181,20 @@ impl Board {
         } else {
             Err::<(), _>("undo move without move to undo").unwrap_log_error();
         }
+
+        Board {
+            pieces: self.pieces,
+            taken: self.taken,
+            previous: self.previous,
+            _pd: PhantomData,
+        }
     }
 
     ///Clears out the cache
     ///
     /// # Panics
     /// Can panic if there wasn't a move made beforehand
-    pub fn move_worked(&mut self, taken: bool) {
+    pub fn move_worked(mut self, taken: bool) -> Board<CanMovePiece> {
         if taken {
             let (_, p, _) = std::mem::take(&mut self.previous)
                 .ae()
@@ -282,21 +206,12 @@ impl Board {
         } else {
             self.previous = None;
         }
-    }
 
-    ///Checks whether or not a piece exists at a given set of coordinates
-    #[must_use]
-    pub fn piece_exists_at_location(&self, coords: Coords) -> bool {
-        if let Some(c) = coords.to_usize() {
-            matches!(self.pieces.get(c), Some(Some(_)))
-        } else {
-            false
+        Board {
+            pieces: self.pieces,
+            taken: self.taken,
+            previous: self.previous,
+            _pd: PhantomData,
         }
-    }
-
-    ///Gets a clone of all the pieces which have been taken
-    #[must_use]
-    pub fn get_taken(&self) -> Vec<ChessPiece> {
-        self.taken.clone()
     }
 }

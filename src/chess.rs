@@ -8,7 +8,7 @@ use strum::{Display, EnumIter, IntoEnumIterator};
 use crate::error_ext::{ErrorExt, ToAnyhowNotErr};
 
 ///Enum with all of the chess piece kinds
-#[derive(EnumIter, Display, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(EnumIter, Display, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(u8)]
 pub enum ChessPieceKind {
     ///Bishop Piece - move on diagonals

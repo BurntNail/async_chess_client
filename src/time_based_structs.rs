@@ -174,6 +174,7 @@ average_impl!(u8 => average_u8, u16 => average_u16, u32 => average_u32, u64 => a
 average_fp_impl!(f32 => average_f32, f64 => average_f64);
 
 ///Provides any number of unit structs that implement a unit type
+#[macro_export]
 macro_rules! generic_enum {
     (($trait_name:ident -> $trait_docs:literal) => $(($unit_struct_name:ident -> $docs:literal)),+) => {
         pub trait $trait_name : Sealed {}

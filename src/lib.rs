@@ -34,6 +34,10 @@ pub mod list_refresher;
 pub mod server_interface;
 ///Module to hold structs which deal with time
 pub mod time_based_structs;
+///Module to hold a container for the board for ease of use and utility functions
+pub mod board_container;
+///Module to hold coordinates
+pub mod coords;
 
 #[macro_use]
 extern crate tracing;

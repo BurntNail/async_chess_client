@@ -35,12 +35,10 @@ impl<T> Either<T, T> {
 
 impl<L: Debug, R: Debug> Debug for Either<L, R> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut debug = f.debug_struct("Either");
         match self {
-            Self::Left(l) => debug.field("Left", l),
-            Self::Right(r) => debug.field("Right", r),
+            Self::Left(arg0) => f.debug_tuple("Left").field(arg0).finish(),
+            Self::Right(arg0) => f.debug_tuple("Right").field(arg0).finish(),
         }
-        .finish()
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::{
-    board::{Coords, Board},
+    board::{Board, CanMovePiece},
     chess::{ChessPiece, ChessPieceKind},
-    error_ext::{ErrorExt, ToAnyhowNotErr},
+    error_ext::{ErrorExt, ToAnyhowNotErr}, coords::Coords,
 };
 use anyhow::{Context, Error, Result};
 use serde::{Deserialize, Serialize};
@@ -24,10 +24,10 @@ pub struct JSONPiece {
     pub is_white: bool,
 }
 
-impl TryInto<Board> for JSONPieceList {
+impl TryInto<Board<CanMovePiece>> for JSONPieceList {
     type Error = Error;
 
-    fn try_into(self) -> Result<Board, Self::Error> {
+    fn try_into(self) -> Result<Board<CanMovePiece>, Self::Error> {
         Board::new_json(self)
     }
 }
@@ -76,7 +76,7 @@ impl JSONPieceList {
 /// # Panics:
 /// - Shouldn't if list is correct, but might if the list is invalid and fails [`JSONPieceList::into_game_list`]
 #[must_use]
-pub fn no_connection_list() -> Board {
+pub fn no_connection_list() -> Board<CanMovePiece> {
     let p = |x, y| JSONPiece {
         x,
         y,

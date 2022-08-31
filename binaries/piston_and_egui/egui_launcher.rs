@@ -4,8 +4,7 @@ use directories::ProjectDirs;
 use eframe::{egui, App};
 use serde_json::to_string;
 use std::{
-    fs::{create_dir_all, OpenOptions},
-    io::Write,
+    fs::{create_dir_all},
 };
 
 use crate::piston::PistonConfig;
@@ -119,13 +118,6 @@ fn write_conf_to_file(pc: PistonConfig) -> Result<()> {
     let path = cd.join("config.json");
 
     let st = to_string(&pc).with_context(|| format!("turning {pc:?} to string"))?;
-    let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .open(&path)
-        .with_context(|| format!("creating OpenOptions and opening {path:?}"))?;
 
-    write!(file, "{}", &st).context("writing to file")?;
-
-    Ok(())
+    std::fs::write(&path, st).context("Write to file")
 }

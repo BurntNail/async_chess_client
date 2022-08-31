@@ -13,6 +13,10 @@
 )]
 //!Async chess client with an egui configurator, and a piston game runner
 
+//TODO: A thing to say when your opponent has moved
+
+//TODO: Fix rooks
+
 use crate::{egui_launcher::egui_main, piston::piston_main};
 use anyhow::{Context, Result};
 use async_chess_client::{prelude::ErrorExt, util::error_ext::ToAnyhowNotErr};
@@ -119,6 +123,8 @@ pub fn read_config() -> Result<PistonConfig> {
         .context("finding project dirs")?
         .config_dir()
         .join("config.json");
+    info!(?conf_path, "Attempting to read config");
+
     let cntnts =
         read_to_string(&conf_path).with_context(|| format!("reading path {conf_path:?}"))?;
     from_str::<PistonConfig>(&cntnts).with_context(|| format!("reading contents {cntnts}"))

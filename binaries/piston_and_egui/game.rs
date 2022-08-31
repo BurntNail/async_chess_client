@@ -132,6 +132,7 @@ impl ChessGame {
         graphics: &mut G2d,
         raw_mouse_coords: (f64, f64),
         window_scale: f64,
+        is_flipped: bool
     ) -> Result<()> {
         let board_coords = if mp_valid(raw_mouse_coords, window_scale) {
             let bps = to_board_pixels(raw_mouse_coords, window_scale);
@@ -150,7 +151,7 @@ impl ChessGame {
             let tex = self
                 .cache
                 .get("board_alt.png")
-                .context("getting hightlight.png")
+                .context("getting board_alt.png")
                 .unwrap_log_error();
             image.draw(tex, &DrawState::default(), t, graphics);
         }
@@ -163,7 +164,11 @@ impl ChessGame {
         {
             if let Some((px, py)) = board_coords {
                 let x = f64::from(px) * BOARD_TILE_S * window_scale;
-                let y = f64::from(py) * BOARD_TILE_S * window_scale;
+                let y = if is_flipped {
+                    f64::from(7 - py)
+                } else {
+                    f64::from(py)
+                } * BOARD_TILE_S * window_scale;
                 let image = Image::new().rect(square(x, y, TILE_S * window_scale));
 
                 image.draw(
@@ -191,7 +196,11 @@ impl ChessGame {
                         }
                         Ok(tex) => {
                             let x = f64::from(col) * BOARD_TILE_S * window_scale;
-                            let y = f64::from(row) * BOARD_TILE_S * window_scale;
+                            let y = if is_flipped {
+                                f64::from(7 - row)
+                            } else {
+                                f64::from(row)
+                            } * BOARD_TILE_S * window_scale;
                             let image = Image::new().rect(square(x, y, TILE_S * window_scale));
 
                             let mut draw =
@@ -259,7 +268,11 @@ impl ChessGame {
         }
 
         {
-            let (raw_x, raw_y) = raw_mouse_coords;
+            let (raw_x, raw_y) = if is_flipped {
+                (raw_mouse_coords.0, BOARD_S * window_scale - raw_mouse_coords.1)
+            } else {
+                raw_mouse_coords
+            };
             if self.last_pressed.is_on_board() {
                 if let Some(piece) = self.board[self.last_pressed] {
                     match self.cache.get(&piece.to_file_name()) {

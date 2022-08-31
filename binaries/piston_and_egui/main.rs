@@ -44,6 +44,8 @@ pub mod pixel_size_consts {
     pub const TILE_S: f64 = 20.0;
     ///The size in pixels of the length/width of the chess board sprite
     pub const BOARD_S: f64 = 256.0;
+    ///Number of pixels above the board
+    pub const TOP_SPACE: f64 = 18.0;
 
     ///The padding in pixels around each tile
     pub const PADDING: f64 = 1.0;

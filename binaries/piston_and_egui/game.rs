@@ -14,9 +14,13 @@ use async_chess_client::{
     prelude::{Coords, Either, ErrorExt},
     util::{cacher::Cacher, error_ext::ToAnyhowErr},
 };
-use graphics::DrawState;
+use graphics::{DrawState, ImageSize};
 use piston_window::{clear, rectangle::square, Context, G2d, Image, PistonWindow, Transformed};
 use std::sync::mpsc::TryRecvError;
+use std::time::Duration;
+use async_chess_client::prelude::DoOnInterval;
+use async_chess_client::util::time_based_structs::do_on_interval::UpdateOnCheck;
+use crate::pixel_size_consts::TOP_SPACE;
 
 ///Struct to hold Game of Chess
 pub struct ChessGame {
@@ -32,9 +36,11 @@ pub struct ChessGame {
     ex_last_pressed: Coords,
     ///The refresher for making server requests
     refresher: ListRefresher,
+    ///Whenever we get an update, display a message for an interval, timed by this
+    show_board_update: Option<DoOnInterval<UpdateOnCheck>>
 }
 impl ChessGame {
-    ///Create a new `ChessGame`
+    ///Create a new `ChessGame`f
     ///
     /// # Errors
     /// - Can fail if the cacher incorrectly populates
@@ -46,6 +52,7 @@ impl ChessGame {
             refresher: ListRefresher::new(id),
             last_pressed: Coords::OffBoard,
             ex_last_pressed: Coords::OffBoard,
+            show_board_update: None,
         })
     }
 
@@ -296,6 +303,36 @@ impl ChessGame {
             }
         }
 
+        {
+            let mut finished = false;
+            if let Some(doi) = &mut self.show_board_update {
+                if doi.can_do() {
+                    finished = true;
+                    //counting down to its own death
+                } else {
+                    match self.cache.get("board_updated.png") {
+                        Ok(tex) => {
+                            let (x_size, y_size) = tex.get_size();
+                            let (x_size, y_size) = (f64::from(x_size), f64::from(y_size));
+                            let x_pos = (BOARD_S - x_size) / 2.0;
+                            let y_pos = (TOP_SPACE - y_size) / 2.0;
+
+                            let img = Image::new().rect([x_pos * window_scale, y_pos * window_scale, (x_pos + x_size) * window_scale, (y_pos + y_size) * window_scale]);
+                            img.draw(tex, &DrawState::default(), t, graphics);
+
+                        }
+                        Err(e) => {
+                            errs.push(e.context("couldn't find \"board_updated.png\""));
+                        }
+                    }
+                }
+            }
+
+            if finished {
+                self.show_board_update = None;
+            }
+        }
+
         if !errs.is_empty() {
             bail!("{errs:?}");
         }
@@ -312,6 +349,7 @@ impl ChessGame {
     // #[tracing::instrument(skip(self))]
     #[allow(irrefutable_let_patterns)]
     pub fn update_list(&mut self, ignore_timer: bool) -> Result<()> {
+        let mut updated = false;
         match self.refresher.try_recv() {
             Ok(msg) => match msg {
                 MessageToGame::UpdateBoard(msg) => match msg {
@@ -329,6 +367,7 @@ impl ChessGame {
                                     self.board = Either::Left(bo.move_worked(taken));
                                 }
                                 MoveOutcome::Invalid | MoveOutcome::CouldntProcessMove => {
+                                    updated = true;
                                     info!("Resetting pieces");
                                     self.board = Either::Left(bo.undo_move());
                                 }
@@ -340,7 +379,10 @@ impl ChessGame {
                     BoardMessage::NoConnectionList => {
                         self.board = Either::Left(no_connection_list());
                     }
-                    BoardMessage::NewList(l) => self.board = Either::Left(Board::new_json(l)?),
+                    BoardMessage::NewList(l) => {
+                        updated = true;
+                        self.board = Either::Left(Board::new_json(l)?);
+                    },
                     BoardMessage::UseExisting => {}
                 },
             },
@@ -350,6 +392,10 @@ impl ChessGame {
                     std::process::exit(1);
                 }
             }
+        }
+
+        if updated {
+            self.show_board_update = Some(DoOnInterval::new(Duration::from_millis(1_500)));
         }
 
         self.refresher

@@ -130,7 +130,7 @@ impl Board<CanMovePiece> {
     #[tracing::instrument(skip(self))]
     pub fn make_move(mut self, m: JSONMove) -> Board<NeedsMoveUpdate> {
         if self.previous.is_some() {
-            Err::<(), _>("Move made without clearing").unwrap_log_error();
+            Err::<(), _>(anyhow!("Move made without clearing")).unwrap_log_error();
         }
 
         self.previous = Some((
@@ -177,7 +177,7 @@ impl Board<NeedsMoveUpdate> {
                 piece.kind = old_kind;
             }
         } else {
-            Err::<(), _>("undo move without move to undo").unwrap_log_error();
+            Err::<(), _>(anyhow!("undo move without move to undo")).unwrap_log_error();
         }
 
         Board {

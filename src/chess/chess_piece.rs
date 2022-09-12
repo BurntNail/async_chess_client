@@ -1,5 +1,6 @@
 use crate::{prelude::SError, util::error_ext::ToAnyhowNotErr};
 use std::fmt::{Debug, Formatter};
+use epac_utils::error_ext::ToAnyhowNotErr;
 use strum::{Display, EnumIter, IntoEnumIterator};
 
 ///Enum with all of the chess piece kinds

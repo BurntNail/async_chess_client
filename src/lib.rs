@@ -18,12 +18,13 @@
 
 //TODO: add docu-examples
 
+#![macro_use]
+extern crate epac_utils;
+
 ///Module to hold all chess-related modules
 pub mod chess;
 ///Module to hold all networking modules
 pub mod net;
-///Module to hold all utility modules
-pub mod util;
 
 ///Module to hold commonly used structs, enums and functions that should be in a prelude
 pub mod prelude {
@@ -31,11 +32,6 @@ pub mod prelude {
         chess::{
             chess_piece::{ChessPiece, ChessPieceKind},
             coords::Coords,
-        },
-        util::{
-            either::Either,
-            error_ext::ErrorExt,
-            time_based_structs::{do_on_interval::DoOnInterval, scoped_timers::ScopedTimer},
         },
     };
     pub use anyhow::{Error, Result};

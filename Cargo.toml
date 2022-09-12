@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = { version = "1.0.62", features = ["backtrace"] }
 directories = "4.0.1"
 eframe = { version = "0.18.0", features = ["dark-light"] }
+epac-utils = { version = "0.1.0", features = ["piston_cacher"] }
 find_folder = "0.3.0"
 piston2d-graphics = "0.42.0"
 piston_window = "0.124.0"

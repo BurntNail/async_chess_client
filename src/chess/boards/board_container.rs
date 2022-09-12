@@ -1,7 +1,6 @@
 use std::ops::{Index, IndexMut};
-
-use crate::prelude::{ChessPiece, Coords, Either};
-
+use epac_utils::either::Either;
+use crate::prelude::{ChessPiece, Coords};
 use super::board::{Board, CanMovePiece, NeedsMoveUpdate};
 
 ///Struct to hold board states for utility purposes
